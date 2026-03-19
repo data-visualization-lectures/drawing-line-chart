@@ -7,6 +7,8 @@
 <!-- dataviz.jp 共通ヘッダー -->
 <script src="https://auth.dataviz.jp/lib/supabase.js"></script>
 <script src="https://auth.dataviz.jp/lib/dataviz-auth-client.js"></script>
+<!-- ツールヘッダー（保存/読込UI） -->
+<script src="https://auth.dataviz.jp/lib/dataviz-tool-header.js" defer></script>
 <!-- D3.js -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <style>
@@ -22,7 +24,7 @@ body {
 .you-draw-it {
   max-width: 640px;
   margin: 0 auto;
-  padding: 68px 16px 20px;
+  padding: 124px 16px 20px;
 }
 
 .you-draw-it h1 {
@@ -257,9 +259,141 @@ body {
   font-weight: 600;
 }
 
+/* --- Load modal --- */
+.ydi-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 10000;
+  justify-content: center;
+  align-items: center;
+}
+.ydi-modal-overlay.active {
+  display: flex;
+}
+.ydi-modal {
+  background: #fff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.ydi-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+.ydi-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.ydi-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: #888;
+  padding: 0 4px;
+}
+.ydi-modal-close:hover { color: #333; }
+.ydi-modal-body {
+  overflow-y: auto;
+  padding: 12px 20px;
+}
+.ydi-modal-body .ydi-empty {
+  text-align: center;
+  color: #999;
+  padding: 32px 0;
+}
+.ydi-project-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ydi-project-item:hover {
+  background: #f8f8f8;
+  margin: 0 -20px;
+  padding: 10px 20px;
+}
+.ydi-project-item:last-child { border-bottom: none; }
+.ydi-project-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.ydi-project-date {
+  font-size: 0.8rem;
+  color: #999;
+}
+
+/* --- Save name dialog --- */
+.ydi-save-dialog {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 10000;
+  justify-content: center;
+  align-items: center;
+}
+.ydi-save-dialog.active { display: flex; }
+.ydi-save-dialog-inner {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.ydi-save-dialog-inner h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
+.ydi-save-dialog-inner input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+.ydi-save-dialog-inner input:focus {
+  outline: none;
+  border-color: #333;
+}
+.ydi-save-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.ydi-save-dialog-actions button {
+  padding: 8px 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background: #f0f0f0;
+}
+.ydi-save-dialog-actions button.primary {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+.ydi-save-dialog-actions button.primary:hover { background: #555; }
+
 /* --- Responsive --- */
 @media (max-width: 600px) {
-  .you-draw-it { padding: 12px 8px; }
+  .you-draw-it { padding: 108px 8px 12px; }
   .you-draw-it h1 { font-size: 1.3rem; }
   .ydi-chart-wrap h2 { font-size: 1rem; }
   .ydi-draw-prompt { font-size: 13px; }
@@ -272,6 +406,31 @@ body {
 <div class="you-draw-it" id="app">
   <h1>描いて答える折れ線グラフ</h1>
   <p class="intro">グラフの続きを予測して描いてみよう。どれだけ正確に当てられるかな？</p>
+</div>
+
+<!-- 読込モーダル -->
+<div class="ydi-modal-overlay" id="load-modal">
+  <div class="ydi-modal">
+    <div class="ydi-modal-header">
+      <h3>プロジェクトを読み込む</h3>
+      <button class="ydi-modal-close" id="load-modal-close">&times;</button>
+    </div>
+    <div class="ydi-modal-body" id="load-modal-body">
+      <p class="ydi-empty">読み込み中...</p>
+    </div>
+  </div>
+</div>
+
+<!-- 保存名入力ダイアログ -->
+<div class="ydi-save-dialog" id="save-dialog">
+  <div class="ydi-save-dialog-inner">
+    <h3>プロジェクト名</h3>
+    <input type="text" id="save-name-input" placeholder="プロジェクト名を入力">
+    <div class="ydi-save-dialog-actions">
+      <button id="save-cancel">キャンセル</button>
+      <button class="primary" id="save-confirm">保存</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -944,11 +1103,291 @@ class YouDrawIt {
   }
 }
 
-// --------------- 初期化 ---------------
-new YouDrawIt("#app", chartConfigs);
+// --------------- API設定 ---------------
+const API_BASE = "https://api.dataviz.jp";
+const APP_NAME = "drawing-line-chart";
 
-// 外部JSONからの読み込み例:
-// YouDrawIt.fromJSON("#app", "data/sample.json");
+// --------------- チャート描画・再描画 ---------------
+let currentConfigs = chartConfigs;
+
+function renderCharts(configs) {
+  document.querySelectorAll(".ydi-chart-wrap").forEach(el => el.remove());
+  currentConfigs = configs;
+  new YouDrawIt("#app", configs);
+}
+
+// --------------- サムネイル生成 ---------------
+async function generateThumbnail() {
+  const svgEl = document.querySelector(".ydi-chart-wrap svg");
+  if (!svgEl) return null;
+  try {
+    const clone = svgEl.cloneNode(true);
+    // Inline computed styles for accurate rendering
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const svgData = new XMLSerializer().serializeToString(clone);
+    const canvas = document.createElement("canvas");
+    const svgW = parseFloat(svgEl.getAttribute("width")) || 640;
+    const svgH = parseFloat(svgEl.getAttribute("height")) || 400;
+    canvas.width = svgW * 2;
+    canvas.height = svgH * 2;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const img = new Image();
+    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(url);
+    return canvas.toDataURL("image/png");
+  } catch (e) {
+    console.warn("Thumbnail generation failed:", e);
+    return null;
+  }
+}
+
+// --------------- 認証トークン取得 ---------------
+async function getAccessToken() {
+  if (!window.datavizSupabase) return null;
+  const { data: { session } } = await window.datavizSupabase.auth.getSession();
+  return session?.access_token || null;
+}
+
+function getToolHeader() {
+  return document.querySelector("dataviz-tool-header");
+}
+
+function showMessage(msg, type = "info") {
+  const th = getToolHeader();
+  if (th && th.showMessage) {
+    th.showMessage(msg, type);
+  } else {
+    alert(msg);
+  }
+}
+
+// --------------- 保存機能 ---------------
+async function saveProject() {
+  const token = await getAccessToken();
+  if (!token) {
+    showMessage("ログインが必要です", "error");
+    return;
+  }
+
+  // Show save dialog
+  const dialog = document.getElementById("save-dialog");
+  const input = document.getElementById("save-name-input");
+  input.value = currentConfigs[0]?.title || "新しいプロジェクト";
+  dialog.classList.add("active");
+  input.focus();
+  input.select();
+}
+
+async function doSave(name) {
+  const token = await getAccessToken();
+  if (!token) return;
+
+  const th = getToolHeader();
+  try {
+    const thumbnail = await generateThumbnail();
+    const body = {
+      name: name,
+      app_name: APP_NAME,
+      data: { charts: currentConfigs, version: 1 },
+    };
+    if (thumbnail) body.thumbnail = thumbnail;
+
+    const res = await fetch(`${API_BASE}/api/projects`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    showMessage("保存しました", "success");
+  } catch (e) {
+    console.error("Save failed:", e);
+    showMessage("保存に失敗しました: " + e.message, "error");
+  }
+}
+
+// Save dialog event handlers
+document.getElementById("save-cancel").addEventListener("click", () => {
+  document.getElementById("save-dialog").classList.remove("active");
+});
+document.getElementById("save-confirm").addEventListener("click", () => {
+  const name = document.getElementById("save-name-input").value.trim();
+  if (!name) return;
+  document.getElementById("save-dialog").classList.remove("active");
+  doSave(name);
+});
+document.getElementById("save-name-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    document.getElementById("save-confirm").click();
+  } else if (e.key === "Escape") {
+    document.getElementById("save-cancel").click();
+  }
+});
+
+// --------------- 読込機能 ---------------
+async function loadProjectList() {
+  const token = await getAccessToken();
+  if (!token) {
+    showMessage("ログインが必要です", "error");
+    return;
+  }
+
+  const modal = document.getElementById("load-modal");
+  const body = document.getElementById("load-modal-body");
+  body.innerHTML = '<p class="ydi-empty">読み込み中...</p>';
+  modal.classList.add("active");
+
+  try {
+    const res = await fetch(`${API_BASE}/api/projects?app=${APP_NAME}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { projects } = await res.json();
+
+    if (!projects || projects.length === 0) {
+      body.innerHTML = '<p class="ydi-empty">保存されたプロジェクトはありません</p>';
+      return;
+    }
+
+    body.innerHTML = "";
+    projects.forEach(p => {
+      const item = document.createElement("div");
+      item.className = "ydi-project-item";
+      const date = new Date(p.updated_at || p.created_at);
+      const dateStr = date.toLocaleDateString("ja-JP", {
+        year: "numeric", month: "short", day: "numeric",
+      });
+      item.innerHTML = `
+        <span class="ydi-project-name">${escapeHTML(p.name)}</span>
+        <span class="ydi-project-date">${dateStr}</span>
+      `;
+      item.addEventListener("click", () => loadProject(p.id));
+      body.appendChild(item);
+    });
+  } catch (e) {
+    console.error("Load list failed:", e);
+    body.innerHTML = '<p class="ydi-empty">読み込みに失敗しました</p>';
+  }
+}
+
+async function loadProject(projectId) {
+  const token = await getAccessToken();
+  if (!token) return;
+
+  document.getElementById("load-modal").classList.remove("active");
+
+  try {
+    const res = await fetch(`${API_BASE}/api/projects/${projectId}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data.charts && Array.isArray(data.charts)) {
+      renderCharts(data.charts);
+      showMessage("読み込みました", "success");
+    } else {
+      throw new Error("Invalid project data format");
+    }
+  } catch (e) {
+    console.error("Load project failed:", e);
+    showMessage("読み込みに失敗しました: " + e.message, "error");
+  }
+}
+
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Modal close handlers
+document.getElementById("load-modal-close").addEventListener("click", () => {
+  document.getElementById("load-modal").classList.remove("active");
+});
+document.getElementById("load-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) {
+    e.currentTarget.classList.remove("active");
+  }
+});
+
+// --------------- ?project_id 自動読込 ---------------
+async function autoLoadFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get("project_id");
+  if (!projectId) return;
+
+  // Wait for auth to be ready
+  const waitForAuth = () => new Promise(resolve => {
+    if (window.datavizSupabase) return resolve();
+    const check = setInterval(() => {
+      if (window.datavizSupabase) { clearInterval(check); resolve(); }
+    }, 200);
+    setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+  });
+
+  await waitForAuth();
+  const token = await getAccessToken();
+  if (!token) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/projects/${projectId}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data.charts && Array.isArray(data.charts)) {
+      renderCharts(data.charts);
+    }
+  } catch (e) {
+    console.error("Auto-load failed:", e);
+  }
+}
+
+// --------------- ツールヘッダー設定 ---------------
+function setupToolHeader() {
+  const toolHeader = getToolHeader();
+  if (toolHeader && toolHeader.setConfig) {
+    toolHeader.setConfig({
+      logo: { type: "text", text: "描いて答える折れ線グラフ" },
+      buttons: [
+        { label: "保存", action: () => saveProject(), id: "save-btn" },
+        { label: "読込", action: () => loadProjectList(), id: "load-btn" },
+      ],
+    });
+  }
+}
+
+// --------------- 初期化 ---------------
+renderCharts(chartConfigs);
+
+// ツールヘッダーはdeferで遅延読込されるため、DOMContentLoadedで設定
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", setupToolHeader);
+} else {
+  // defer script may not be ready yet, wait a tick
+  setTimeout(setupToolHeader, 100);
+}
+
+// URL自動読込
+autoLoadFromURL();
 </script>
 </body>
 </html>
