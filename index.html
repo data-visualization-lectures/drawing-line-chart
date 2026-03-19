@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>描いて答える折れ線グラフ</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #333;
+  background: #fff;
+  line-height: 1.6;
+}
+
+.you-draw-it {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+
+.you-draw-it h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.you-draw-it .intro {
+  text-align: center;
+  color: #666;
+  margin-bottom: 32px;
+  font-size: 0.95rem;
+}
+
+/* --- Individual chart --- */
+.ydi-chart-wrap {
+  margin-bottom: 48px;
+  position: relative;
+}
+
+.ydi-chart-wrap h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.ydi-chart-wrap svg {
+  display: block;
+  margin: 0 auto;
+  overflow: visible;
+  font: 300 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Grid */
+.ydi-grid line {
+  stroke: #e0e0e0;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+/* Axes */
+.ydi-chart-wrap .axis path,
+.ydi-chart-wrap .axis line {
+  stroke: #ccc;
+  shape-rendering: crispEdges;
+}
+.ydi-chart-wrap .axis text {
+  fill: #888;
+  font-size: 12px;
+}
+
+/* Lines */
+.ydi-known-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ydi-actual-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ydi-area {
+  opacity: 0.12;
+}
+.ydi-user-line {
+  fill: none;
+  stroke-width: 3;
+  stroke-dasharray: 1 7;
+  stroke-linecap: round;
+}
+
+/* Drag rect */
+.ydi-drag-rect {
+  fill-opacity: 0;
+  cursor: pointer;
+}
+
+/* Flash rects */
+.ydi-flash-rect {
+  fill: rgba(255, 200, 0, 0.7);
+  fill-opacity: 0;
+}
+.ydi-flash-rect.ydi-pending {
+  animation: ydi-flash 0.6s ease-in-out alternate infinite;
+}
+
+@keyframes ydi-flash {
+  from { fill-opacity: 0; }
+  to   { fill-opacity: 0.5; }
+}
+
+/* Value labels */
+.ydi-value-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Draw prompt */
+.ydi-draw-prompt {
+  font-size: 15px;
+  font-weight: 600;
+  fill: #999;
+  text-anchor: middle;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+/* Endpoint circles */
+.ydi-endpoint {
+  transition: opacity 0.3s;
+}
+
+/* --- State: drag started --- */
+.ydi-drag-started .ydi-draw-prompt {
+  opacity: 0;
+}
+.ydi-drag-started .ydi-flash-rect.ydi-pending {
+  animation: ydi-flash 0.4s ease-in-out alternate infinite;
+}
+
+/* --- Button --- */
+.ydi-button-area {
+  text-align: center;
+  margin-top: 12px;
+  transition: opacity 0.3s;
+}
+.ydi-button {
+  display: inline-block;
+  padding: 10px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: #333;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.25;
+  pointer-events: none;
+  transition: opacity 0.3s, background 0.2s;
+}
+.ydi-ready .ydi-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+.ydi-button:hover {
+  background: #555;
+}
+
+/* --- After reveal --- */
+.ydi-after-reveal {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 0.95rem;
+  color: #555;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.5s 0.6s, max-height 0.5s 0.6s;
+}
+.ydi-guessed .ydi-button-area {
+  opacity: 0;
+  pointer-events: none;
+}
+.ydi-guessed .ydi-after-reveal {
+  opacity: 1;
+  max-height: 300px;
+}
+.ydi-guessed .ydi-drag-rect {
+  pointer-events: none;
+}
+
+/* Score badge */
+.ydi-score {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.ydi-score-good { background: #d4edda; color: #155724; }
+.ydi-score-ok   { background: #fff3cd; color: #856404; }
+.ydi-score-off  { background: #f8d7da; color: #721c24; }
+
+/* Download buttons */
+.ydi-download-area {
+  margin-top: 10px;
+}
+.ydi-download-btn {
+  display: inline-block;
+  padding: 5px 14px;
+  margin: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-decoration: none;
+}
+.ydi-download-btn:hover {
+  background: #e0e0e0;
+}
+
+/* --- Divider line between known and draw area --- */
+.ydi-divider {
+  stroke: #ccc;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  shape-rendering: crispEdges;
+}
+
+/* --- Legend (shown after reveal) --- */
+.ydi-legend {
+  opacity: 0;
+  transition: opacity 0.5s 0.8s;
+}
+.ydi-guessed .ydi-legend {
+  opacity: 1;
+}
+.ydi-legend-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+  .you-draw-it { padding: 12px 8px; }
+  .you-draw-it h1 { font-size: 1.3rem; }
+  .ydi-chart-wrap h2 { font-size: 1rem; }
+  .ydi-draw-prompt { font-size: 13px; }
+  .ydi-value-label { font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<div class="you-draw-it" id="app">
+  <h1>描いて答える折れ線グラフ</h1>
+  <p class="intro">グラフの続きを予測して描いてみよう。どれだけ正確に当てられるかな？</p>
+</div>
+
+<script type="module">
+// ============================================================
+//  YouDrawIt — 描いて答える折れ線グラフ テンプレート
+// ============================================================
+
+// --------------- サンプルデータ ---------------
+const chartConfigs = [
+  {
+    id: "unemployment",
+    title: "米国の失業率はオバマ政権下でどう変化した？",
+    data: [
+      { x: 2000, y: 4.0 }, { x: 2001, y: 4.7 }, { x: 2002, y: 5.8 },
+      { x: 2003, y: 6.0 }, { x: 2004, y: 5.5 }, { x: 2005, y: 5.1 },
+      { x: 2006, y: 4.6 }, { x: 2007, y: 4.6 }, { x: 2008, y: 5.8 },
+      { x: 2009, y: 9.3 }, { x: 2010, y: 9.6 }, { x: 2011, y: 8.9 },
+      { x: 2012, y: 8.1 }, { x: 2013, y: 7.4 }, { x: 2014, y: 6.2 },
+      { x: 2015, y: 5.3 }, { x: 2016, y: 4.9 },
+    ],
+    drawStartX: 2008,
+    unit: "%",
+    yFormat: ".1f",
+    precision: 1,
+    yExtent: 1.8,
+    colors: { known: "#e41a1c", actual: "#4286bc", user: "#ffc700" },
+    buttonText: "答え合わせ",
+    drawPrompt: ["線を描いて", "予測してみよう"],
+    afterRevealHTML: "オバマ政権下で失業率は9.3%のピークから4.9%まで低下しました。",
+  },
+  {
+    id: "gas-price",
+    title: "ガソリン価格（$/ガロン）はどう変化した？",
+    data: [
+      { x: 2000, y: 1.51 }, { x: 2001, y: 1.46 }, { x: 2002, y: 1.36 },
+      { x: 2003, y: 1.59 }, { x: 2004, y: 1.88 }, { x: 2005, y: 2.30 },
+      { x: 2006, y: 2.59 }, { x: 2007, y: 2.80 }, { x: 2008, y: 3.27 },
+      { x: 2009, y: 2.35 }, { x: 2010, y: 2.79 }, { x: 2011, y: 3.53 },
+      { x: 2012, y: 3.64 }, { x: 2013, y: 3.53 }, { x: 2014, y: 3.37 },
+      { x: 2015, y: 2.45 }, { x: 2016, y: 2.14 },
+    ],
+    drawStartX: 2008,
+    unit: "$",
+    yFormat: ".2f",
+    precision: 2,
+    yExtent: 1.6,
+    colors: { known: "#e41a1c", actual: "#4286bc", user: "#ffc700" },
+    buttonText: "答え合わせ",
+    drawPrompt: ["線を描いて", "予測してみよう"],
+    afterRevealHTML: "ガソリン価格は変動が激しく、2012年のピーク$3.64から2016年には$2.14に下落しました。",
+  },
+  {
+    id: "dow-jones",
+    title: "ダウ平均株価はどう推移した？",
+    data: [
+      { x: 2000, y: 10787 }, { x: 2001, y: 10022 }, { x: 2002, y: 8342 },
+      { x: 2003, y: 10454 }, { x: 2004, y: 10783 }, { x: 2005, y: 10718 },
+      { x: 2006, y: 12463 }, { x: 2007, y: 13265 }, { x: 2008, y: 8776 },
+      { x: 2009, y: 10428 }, { x: 2010, y: 11578 }, { x: 2011, y: 12218 },
+      { x: 2012, y: 13104 }, { x: 2013, y: 16577 }, { x: 2014, y: 17823 },
+      { x: 2015, y: 17425 }, { x: 2016, y: 19763 },
+    ],
+    drawStartX: 2008,
+    unit: "",
+    yFormat: ",.0f",
+    precision: 0,
+    yExtent: 1.5,
+    colors: { known: "#e41a1c", actual: "#4286bc", user: "#ffc700" },
+    buttonText: "答え合わせ",
+    drawPrompt: ["線を描いて", "予測してみよう"],
+    afterRevealHTML: "ダウ平均は2008年の暴落後、力強く回復し約20,000ドルに到達しました。",
+  },
+];
+
+// --------------- デフォルト設定 ---------------
+const DEFAULTS = {
+  unit: "",
+  yFormat: ",.0f",
+  precision: 0,
+  yExtent: 1.5,
+  height: 300,
+  margin: { top: 20, right: 110, bottom: 40, left: 15 },
+  colors: { known: "#e41a1c", actual: "#4286bc", user: "#ffc700" },
+  buttonText: "答え合わせ",
+  drawPrompt: ["線を描いて", "予測してみよう"],
+  afterRevealHTML: "",
+};
+
+// --------------- ユーティリティ ---------------
+function clamp(min, max, val) {
+  return Math.max(min, Math.min(max, val));
+}
+
+function mergeConfig(cfg) {
+  return {
+    ...DEFAULTS,
+    ...cfg,
+    margin: { ...DEFAULTS.margin, ...(cfg.margin || {}) },
+    colors: { ...DEFAULTS.colors, ...(cfg.colors || {}) },
+  };
+}
+
+// --------------- ChartInstance ---------------
+class ChartInstance {
+  constructor(parentEl, rawConfig) {
+    this.cfg = mergeConfig(rawConfig);
+    this.state = "idle"; // idle | drawing | ready | revealed
+    this.parentEl = parentEl;
+
+    this._buildDOM();
+    this._render();
+  }
+
+  _buildDOM() {
+    const { cfg } = this;
+    const wrap = document.createElement("div");
+    wrap.className = "ydi-chart-wrap";
+    wrap.id = `ydi-${cfg.id}`;
+
+    wrap.innerHTML = `
+      <h2>${cfg.title}</h2>
+      <div class="ydi-svg-container"></div>
+      <div class="ydi-button-area">
+        <button class="ydi-button">${cfg.buttonText}</button>
+      </div>
+      <div class="ydi-after-reveal">${cfg.afterRevealHTML}</div>
+    `;
+
+    this.parentEl.appendChild(wrap);
+    this.wrapEl = wrap;
+    this.svgContainer = wrap.querySelector(".ydi-svg-container");
+    this.buttonEl = wrap.querySelector(".ydi-button");
+    this.buttonEl.addEventListener("click", () => this._reveal());
+  }
+
+  _render() {
+    const { cfg } = this;
+    const isMobile = window.innerWidth < 600;
+
+    // Clear previous SVG (for resize)
+    this.svgContainer.innerHTML = "";
+
+    const totalWidth = this.svgContainer.offsetWidth || 560;
+    const margin = { ...cfg.margin };
+    if (isMobile) {
+      margin.right = 55;
+      margin.left = 10;
+    }
+    const width = totalWidth - margin.left - margin.right;
+    const height = cfg.height;
+
+    // Data indices
+    const data = cfg.data;
+    const startX = data[0].x;
+    const endX = data[data.length - 1].x;
+    const drawStartX = cfg.drawStartX;
+    const drawStartIndex = data.findIndex(d => d.x >= drawStartX);
+    const xStep = data.length > 1 ? data[1].x - data[0].x : 1;
+
+    // Scales
+    const xScale = d3.scaleLinear()
+      .domain([startX, endX])
+      .range([0, width]);
+
+    const yMax = d3.max(data, d => d.y) * cfg.yExtent;
+    const yScale = d3.scaleLinear()
+      .domain([0, yMax])
+      .nice()
+      .range([height, 0]);
+
+    // SVG
+    const svg = d3.select(this.svgContainer)
+      .append("svg")
+      .attr("width", totalWidth)
+      .attr("height", height + margin.top + margin.bottom);
+
+    const g = svg.append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    this.svg = svg;
+    this.g = g;
+    this.xScale = xScale;
+    this.yScale = yScale;
+    this.width = width;
+    this.height = height;
+    this.margin = margin;
+
+    // --- Grid ---
+    const gridG = g.append("g").attr("class", "ydi-grid");
+    // Vertical
+    gridG.selectAll("line.v")
+      .data(data.map(d => d.x))
+      .join("line")
+      .attr("x1", d => xScale(d))
+      .attr("x2", d => xScale(d))
+      .attr("y1", 0)
+      .attr("y2", height);
+    // Horizontal
+    gridG.selectAll("line.h")
+      .data(yScale.ticks(5))
+      .join("line")
+      .attr("x1", 0)
+      .attr("x2", width)
+      .attr("y1", d => yScale(d))
+      .attr("y2", d => yScale(d));
+
+    // --- Axes ---
+    const yFmt = d3.format(cfg.yFormat);
+
+    // X axis
+    const xAxisG = g.append("g")
+      .attr("class", "axis x-axis")
+      .attr("transform", `translate(0,${height})`)
+      .call(
+        d3.axisBottom(xScale)
+          .tickValues(data.map(d => d.x).filter((_, i) => i % (isMobile ? 4 : 2) === 0 || _ === endX))
+          .tickFormat(d => d === startX ? d : "'" + String(d).slice(-2))
+          .tickSize(6)
+      );
+    xAxisG.select(".domain").remove();
+
+    // Y axis labels (text only, no axis line) on the left side of grid
+    g.selectAll(".ydi-y-label")
+      .data(yScale.ticks(5))
+      .join("text")
+      .attr("class", "ydi-y-label")
+      .attr("x", -5)
+      .attr("y", d => yScale(d))
+      .attr("dy", "0.35em")
+      .attr("text-anchor", "end")
+      .attr("fill", "#888")
+      .attr("font-size", 11)
+      .text(d => yFmt(d));
+
+    // --- Divider line at drawStartX ---
+    g.append("line")
+      .attr("class", "ydi-divider")
+      .attr("x1", xScale(drawStartX))
+      .attr("x2", xScale(drawStartX))
+      .attr("y1", 0)
+      .attr("y2", height);
+
+    // --- Lines ---
+    const line = d3.line()
+      .x(d => xScale(d.x))
+      .y(d => yScale(d.y));
+
+    // Known data (up to drawStartX)
+    const knownData = data.filter(d => d.x <= drawStartX);
+    g.append("path")
+      .attr("class", "ydi-known-line")
+      .attr("d", line(knownData))
+      .attr("stroke", cfg.colors.known);
+
+    // --- ClipPath for actual data ---
+    const clipId = `ydi-clip-${cfg.id}`;
+    const clipRect = svg.append("defs")
+      .append("clipPath")
+      .attr("id", clipId)
+      .append("rect")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", xScale(drawStartX) + margin.left - 1)
+      .attr("height", height + margin.top + margin.bottom);
+
+    this.clipRect = clipRect;
+
+    // Actual data group (clipped)
+    const actualG = g.append("g")
+      .attr("clip-path", `url(#${clipId})`);
+
+    // Area
+    const area = d3.area()
+      .x(d => xScale(d.x))
+      .y0(height)
+      .y1(d => yScale(d.y));
+
+    const actualData = data.filter(d => d.x >= drawStartX);
+    actualG.append("path")
+      .attr("class", "ydi-area")
+      .attr("d", area(actualData))
+      .attr("fill", cfg.colors.actual);
+
+    // Actual line (from drawStartX onward)
+    actualG.append("path")
+      .attr("class", "ydi-actual-line")
+      .attr("d", line(actualData))
+      .attr("stroke", cfg.colors.actual);
+
+    // Actual endpoint
+    const endPt = data[data.length - 1];
+    actualG.append("circle")
+      .attr("cx", xScale(endPt.x))
+      .attr("cy", yScale(endPt.y))
+      .attr("r", 5)
+      .attr("fill", cfg.colors.actual);
+
+    // Actual end value label
+    actualG.append("text")
+      .attr("class", "ydi-value-label")
+      .attr("x", xScale(endPt.x) + 10)
+      .attr("y", yScale(endPt.y))
+      .attr("dy", "0.35em")
+      .attr("fill", cfg.colors.actual)
+      .text(yFmt(endPt.y) + cfg.unit);
+
+    // --- Start & mid point markers ---
+    const startPt = data[0];
+    g.append("circle")
+      .attr("cx", xScale(startPt.x))
+      .attr("cy", yScale(startPt.y))
+      .attr("r", 5)
+      .attr("fill", cfg.colors.known);
+
+    g.append("text")
+      .attr("class", "ydi-value-label")
+      .attr("x", xScale(startPt.x) - 10)
+      .attr("y", yScale(startPt.y))
+      .attr("dy", "0.35em")
+      .attr("text-anchor", "end")
+      .attr("fill", cfg.colors.known)
+      .text(yFmt(startPt.y) + cfg.unit);
+
+    // Mid point (drawStartX)
+    const midPt = data[drawStartIndex];
+    g.append("circle")
+      .attr("cx", xScale(midPt.x))
+      .attr("cy", yScale(midPt.y))
+      .attr("r", 5)
+      .attr("fill", cfg.colors.known);
+
+    const midLabelDy = drawStartIndex > 0 && midPt.y > data[drawStartIndex - 1].y ? -12 : 16;
+    g.append("text")
+      .attr("class", "ydi-value-label")
+      .attr("x", xScale(midPt.x) - 8)
+      .attr("y", yScale(midPt.y) + midLabelDy)
+      .attr("text-anchor", "end")
+      .attr("fill", cfg.colors.known)
+      .text(yFmt(midPt.y) + cfg.unit);
+
+    // --- User drawing data ---
+    this.userData = data
+      .filter(d => d.x >= drawStartX && d.x <= endX)
+      .map(d => ({ x: d.x, y: d.y, userY: null, defined: false }));
+    // First point is anchored
+    this.userData[0].userY = midPt.y;
+    this.userData[0].defined = true;
+
+    // Flash rects
+    const flashRects = g.append("g").attr("class", "ydi-flash-rects");
+    this.flashRectsSel = flashRects.selectAll("rect")
+      .data(this.userData.slice(1))
+      .join("rect")
+      .attr("class", "ydi-flash-rect ydi-pending")
+      .attr("x", d => xScale(d.x) - (xScale(xStep) - xScale(0)) / 2)
+      .attr("y", 0)
+      .attr("width", xScale(xStep) - xScale(0))
+      .attr("height", height);
+
+    // User line path
+    this.userLineSel = g.append("path")
+      .attr("class", "ydi-user-line")
+      .attr("stroke", cfg.colors.user);
+
+    // User endpoint circle
+    this.userCircleSel = g.append("circle")
+      .attr("class", "ydi-endpoint")
+      .attr("r", 5)
+      .attr("fill", cfg.colors.user)
+      .attr("opacity", 0);
+
+    // User value label
+    this.userValueSel = g.append("text")
+      .attr("class", "ydi-value-label")
+      .attr("dy", "0.35em")
+      .attr("fill", cfg.colors.user)
+      .attr("opacity", 0);
+
+    // --- Draw prompt ---
+    const promptG = g.append("text")
+      .attr("class", "ydi-draw-prompt")
+      .attr("x", xScale((drawStartX + endX) / 2))
+      .attr("y", height / 3);
+
+    cfg.drawPrompt.forEach((line, i) => {
+      promptG.append("tspan")
+        .attr("x", xScale((drawStartX + endX) / 2))
+        .attr("dy", i === 0 ? 0 : "1.4em")
+        .text(line);
+    });
+
+    // --- Drag rect (invisible hit zone) ---
+    const dragRect = g.append("rect")
+      .attr("class", "ydi-drag-rect")
+      .attr("x", xScale(drawStartX))
+      .attr("y", 0)
+      .attr("width", xScale(endX) - xScale(drawStartX))
+      .attr("height", height)
+      .attr("fill", cfg.colors.user);
+
+    // --- Drag behavior ---
+    const self = this;
+    const drag = d3.drag()
+      .on("drag", function(event) { self._handleDrag(event, this); })
+      .on("start", function(event) { self._handleDrag(event, this); });
+
+    // Desktop: attach to entire SVG for easier drawing; mobile: drag rect only
+    if (window.innerWidth > 600) {
+      g.call(drag).on("click", function(event) { self._handleDrag(event, this); });
+    } else {
+      dragRect.call(drag).on("click", function(event) { self._handleDrag(event, this); });
+    }
+
+    // Store references
+    this.yFmt = yFmt;
+    this.xStep = xStep;
+    this.endX = endX;
+    this.drawStartX = drawStartX;
+    this.actualEndValue = endPt.y;
+    this.actualEndY = yScale(endPt.y);
+
+    // --- ResizeObserver ---
+    if (!this._resizeObserver) {
+      this._resizeObserver = new ResizeObserver(() => {
+        if (this.state === "revealed") return;
+        // Debounce
+        clearTimeout(this._resizeTimer);
+        this._resizeTimer = setTimeout(() => {
+          if (this.state !== "revealed") {
+            this._render();
+          }
+        }, 200);
+      });
+      this._resizeObserver.observe(this.svgContainer);
+    }
+  }
+
+  _handleDrag(event, el) {
+    if (this.state === "revealed") return;
+
+    const { xScale, yScale, cfg, userData, width, height } = this;
+    const [mx, my] = d3.pointer(event, this.g.node());
+    const drawStartX = cfg.drawStartX;
+    const endX = this.endX;
+    const xStep = this.xStep;
+
+    const xVal = clamp(drawStartX + xStep * 0.5, endX + xStep * 0.5, xScale.invert(mx));
+    const yVal = clamp(0, yScale.domain()[1], yScale.invert(my));
+
+    // Find last defined point for interpolation
+    let lastDefinedIdx = 0;
+    for (let i = userData.length - 1; i >= 0; i--) {
+      if (userData[i].defined) { lastDefinedIdx = i; break; }
+    }
+
+    // Set value and interpolate gaps
+    userData.forEach((d, i) => {
+      if (Math.abs(d.x - xVal) < xStep * 0.5) {
+        d.userY = yVal;
+        d.defined = true;
+
+        // Interpolate between last defined and current
+        const gap = i - lastDefinedIdx;
+        if (gap > 1) {
+          for (let j = 1; j < gap; j++) {
+            const t = j / gap;
+            userData[lastDefinedIdx + j].userY =
+              userData[lastDefinedIdx].userY * (1 - t) + yVal * t;
+            userData[lastDefinedIdx + j].defined = true;
+          }
+        }
+      }
+    });
+
+    // Update state
+    if (this.state === "idle") {
+      this.state = "drawing";
+      this.wrapEl.classList.add("ydi-drag-started");
+    }
+
+    // Update flash rects
+    this.flashRectsSel.each(function(d) {
+      if (d.defined) {
+        d3.select(this).classed("ydi-pending", false).attr("fill-opacity", 0);
+      }
+    });
+
+    // Update user line
+    const userLine = d3.line()
+      .defined(d => d.defined)
+      .x(d => xScale(d.x))
+      .y(d => yScale(d.userY));
+
+    this.userLineSel.attr("d", userLine(userData));
+
+    // Update endpoint
+    const lastDefined = [...userData].reverse().find(d => d.defined);
+    if (lastDefined && lastDefined.x > this.drawStartX) {
+      this.userCircleSel
+        .attr("cx", xScale(lastDefined.x))
+        .attr("cy", yScale(lastDefined.userY))
+        .attr("opacity", 1);
+
+      const yFmt = this.yFmt;
+      const displayVal = cfg.precision
+        ? yFmt(parseFloat(lastDefined.userY.toFixed(cfg.precision)))
+        : yFmt(lastDefined.userY);
+
+      this.userValueSel
+        .attr("x", xScale(lastDefined.x) + 10)
+        .attr("y", yScale(lastDefined.userY))
+        .attr("text-anchor", "start")
+        .attr("opacity", 1)
+        .text(displayVal + cfg.unit);
+    }
+
+    // Check if all points are defined
+    if (userData.every(d => d.defined)) {
+      if (this.state !== "ready") {
+        this.state = "ready";
+        this.wrapEl.classList.add("ydi-ready");
+      }
+    }
+  }
+
+  _reveal() {
+    if (this.state !== "ready") return;
+    this.state = "revealed";
+    this.wrapEl.classList.add("ydi-guessed");
+
+    const { xScale, yScale, width, margin, cfg, userData } = this;
+
+    // Animate clipPath
+    this.clipRect
+      .transition()
+      .duration(1000)
+      .ease(d3.easeLinear)
+      .attr("width", width + margin.left + margin.right + 20);
+
+    // Legend on the right side of the chart
+    const legendX = width + 12;
+    const legendY = 0;
+    const legendG = this.g.append("g")
+      .attr("class", "ydi-legend")
+      .attr("transform", `translate(${legendX},${legendY})`);
+
+    // User prediction legend
+    legendG.append("line")
+      .attr("x1", 0).attr("x2", 20)
+      .attr("y1", 0).attr("y2", 0)
+      .attr("stroke", cfg.colors.user)
+      .attr("stroke-width", 3)
+      .attr("stroke-dasharray", "1 7")
+      .attr("stroke-linecap", "round");
+    legendG.append("text")
+      .attr("class", "ydi-legend-label")
+      .attr("x", 26).attr("y", 0)
+      .attr("dy", "0.35em")
+      .attr("fill", cfg.colors.user)
+      .text("あなたの予測");
+
+    // Actual data legend
+    legendG.append("line")
+      .attr("x1", 0).attr("x2", 20)
+      .attr("y1", 22).attr("y2", 22)
+      .attr("stroke", cfg.colors.actual)
+      .attr("stroke-width", 3)
+      .attr("stroke-linecap", "round");
+    legendG.append("text")
+      .attr("class", "ydi-legend-label")
+      .attr("x", 26).attr("y", 22)
+      .attr("dy", "0.35em")
+      .attr("fill", cfg.colors.actual)
+      .text("実際のデータ");
+
+    // Adjust user value label if too close to actual
+    const userEndY = yScale(userData[userData.length - 1].userY);
+    const actualEndY = this.actualEndY;
+    if (Math.abs(userEndY - actualEndY) < 18) {
+      const offset = userEndY < actualEndY ? -18 : 18;
+      this.userValueSel
+        .transition()
+        .duration(300)
+        .attr("y", actualEndY + offset);
+      this.userCircleSel
+        .transition()
+        .duration(300);
+    }
+
+    // Calculate score
+    const scores = userData.slice(1).map(d => d.userY / d.y);
+    const totalError = d3.sum(scores, s => Math.abs(1 - s));
+    const avgRatio = d3.mean(scores);
+
+    let label, cls;
+    if (totalError < 0.5) {
+      label = "ほぼ正解！";
+      cls = "ydi-score-good";
+    } else if (totalError < 2) {
+      label = "惜しい！";
+      cls = "ydi-score-ok";
+    } else {
+      label = avgRatio < 0.7 ? "低すぎ！" : avgRatio > 1.3 ? "高すぎ！" : "ちょっとずれてる";
+      cls = "ydi-score-off";
+    }
+
+    // Build download data
+    const exportData = userData.map(d => ({
+      x: d.x,
+      actual: d.y,
+      prediction: cfg.precision ? parseFloat(d.userY.toFixed(cfg.precision)) : Math.round(d.userY),
+    }));
+
+    const afterEl = this.wrapEl.querySelector(".ydi-after-reveal");
+    const scoreHTML = `<div class="ydi-score ${cls}">${label}</div>`;
+    const downloadHTML = `<div class="ydi-download-area">
+      <button class="ydi-download-btn" data-fmt="csv">CSV</button>
+      <button class="ydi-download-btn" data-fmt="json">JSON</button>
+    </div>`;
+    afterEl.innerHTML = scoreHTML
+      + (cfg.afterRevealHTML ? `<p style="margin-top:8px">${cfg.afterRevealHTML}</p>` : "")
+      + downloadHTML;
+
+    // Download handlers
+    afterEl.querySelectorAll(".ydi-download-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const fmt = btn.dataset.fmt;
+        let content, mime, ext;
+        if (fmt === "csv") {
+          const header = "x,actual,prediction";
+          const rows = exportData.map(d => `${d.x},${d.actual},${d.prediction}`);
+          content = [header, ...rows].join("\n");
+          mime = "text/csv";
+          ext = "csv";
+        } else {
+          content = JSON.stringify(exportData, null, 2);
+          mime = "application/json";
+          ext = "json";
+        }
+        const blob = new Blob([content], { type: mime });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${cfg.id}-prediction.${ext}`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    });
+
+    // Dispatch event
+    this.wrapEl.dispatchEvent(new CustomEvent("you-draw-it:revealed", {
+      bubbles: true,
+      detail: { id: cfg.id, totalError, avgRatio, label },
+    }));
+  }
+}
+
+// --------------- YouDrawIt (multiple charts) ---------------
+class YouDrawIt {
+  constructor(containerSelector, configs) {
+    const container = document.querySelector(containerSelector);
+    if (!container) throw new Error(`Container not found: ${containerSelector}`);
+
+    this.charts = configs.map(cfg => new ChartInstance(container, cfg));
+  }
+
+  // Load from external JSON
+  static async fromJSON(containerSelector, url) {
+    const configs = await d3.json(url);
+    return new YouDrawIt(containerSelector, configs);
+  }
+}
+
+// --------------- 初期化 ---------------
+new YouDrawIt("#app", chartConfigs);
+
+// 外部JSONからの読み込み例:
+// YouDrawIt.fromJSON("#app", "data/sample.json");
+</script>
+</body>
+</html>
