@@ -411,6 +411,8 @@ body {
 </head>
 <body>
 
+<dataviz-tool-header></dataviz-tool-header>
+
 <div class="you-draw-it" id="app">
   <h1>描いて答える折れ線グラフ</h1>
   <p class="intro">グラフの続きを予測して描いてみよう。どれだけ正確に当てられるかな？</p>
@@ -425,6 +427,19 @@ body {
     </div>
     <div class="ydi-modal-body" id="load-modal-body">
       <p class="ydi-empty">読み込み中...</p>
+    </div>
+  </div>
+</div>
+
+<!-- 公開URLダイアログ -->
+<div class="ydi-save-dialog" id="publish-dialog">
+  <div class="ydi-save-dialog-inner">
+    <h3>クイズを公開しました</h3>
+    <p style="font-size:0.9rem;color:#666;margin-bottom:12px">以下のURLを共有すると、誰でもクイズに回答できます。</p>
+    <input type="text" id="publish-url-input" readonly style="background:#f8f8f8;cursor:text">
+    <div class="ydi-save-dialog-actions">
+      <button id="publish-close">閉じる</button>
+      <button class="primary" id="publish-copy">URLをコピー</button>
     </div>
   </div>
 </div>
@@ -1248,6 +1263,64 @@ document.getElementById("save-name-input").addEventListener("keydown", (e) => {
   }
 });
 
+// --------------- 公開機能 ---------------
+const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
+
+async function publishQuiz() {
+  if (!window.datavizSupabase) {
+    showMessage("Supabaseクライアントが利用できません", "error");
+    return;
+  }
+
+  if (!currentConfigs || currentConfigs.length === 0) {
+    showMessage("公開するチャートがありません", "error");
+    return;
+  }
+
+  try {
+    const cfg = currentConfigs[0];
+    const { data, error } = await window.datavizSupabase
+      .from("quiz_quizzes")
+      .insert({
+        title: cfg.title || "無題のクイズ",
+        chart_config: cfg,
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+
+    const quizUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${data.id}`;
+    const dialog = document.getElementById("publish-dialog");
+    const urlInput = document.getElementById("publish-url-input");
+    urlInput.value = quizUrl;
+    dialog.classList.add("active");
+    urlInput.focus();
+    urlInput.select();
+
+    showMessage("公開しました", "success");
+  } catch (e) {
+    console.error("Publish failed:", e);
+    showMessage("公開に失敗しました: " + e.message, "error");
+  }
+}
+
+// Publish dialog event handlers
+document.getElementById("publish-close").addEventListener("click", () => {
+  document.getElementById("publish-dialog").classList.remove("active");
+});
+document.getElementById("publish-copy").addEventListener("click", () => {
+  const urlInput = document.getElementById("publish-url-input");
+  navigator.clipboard.writeText(urlInput.value).then(() => {
+    showMessage("URLをコピーしました", "success");
+  });
+});
+document.getElementById("publish-dialog").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) {
+    e.currentTarget.classList.remove("active");
+  }
+});
+
 // --------------- 読込機能 ---------------
 async function loadProjectList() {
   const token = await getAccessToken();
@@ -1378,6 +1451,7 @@ function setupToolHeader() {
       buttons: [
         { label: "保存", action: () => saveProject(), id: "save-btn" },
         { label: "読込", action: () => loadProjectList(), id: "load-btn" },
+        { label: "公開", action: () => publishQuiz(), id: "publish-btn" },
       ],
     });
   }

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>結果をみる — 描いて答える折れ線グラフ</title>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WXY3CQ3RNF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-WXY3CQ3RNF');
+</script>
+<!-- Supabase (dataviz.jp shared client) -->
+<script src="https://auth.dataviz.jp/lib/supabase.js"></script>
+<!-- D3.js -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #333;
+  background: #fff;
+  line-height: 1.6;
+}
+
+.share-app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px 16px 20px;
+}
+
+.share-loading, .share-error {
+  text-align: center;
+  padding: 80px 20px;
+  color: #999;
+  font-size: 1rem;
+}
+.share-error { color: #c00; }
+
+/* --- Chart styles --- */
+.ydi-chart-wrap { margin-bottom: 24px; position: relative; }
+.ydi-chart-wrap h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 12px; line-height: 1.4; text-align: center; }
+.ydi-chart-wrap svg { display: block; margin: 0 auto; overflow: visible; font: 300 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.ydi-grid line { stroke: #e0e0e0; stroke-width: 1; shape-rendering: crispEdges; }
+.ydi-chart-wrap .axis path, .ydi-chart-wrap .axis line { stroke: #ccc; shape-rendering: crispEdges; }
+.ydi-chart-wrap .axis text { fill: #888; font-size: 12px; }
+.ydi-known-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.ydi-actual-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.ydi-area { opacity: 0.12; }
+.ydi-user-line { fill: none; stroke-width: 3; stroke-dasharray: 1 7; stroke-linecap: round; }
+.ydi-value-label { font-size: 13px; font-weight: 700; }
+.ydi-divider { stroke: #ccc; stroke-width: 1; stroke-dasharray: 4 3; shape-rendering: crispEdges; }
+.ydi-legend-label { font-size: 12px; font-weight: 600; }
+.ydi-button-area { display: none; }
+.ydi-after-reveal { display: none; }
+
+/* Score + CTA */
+.share-result {
+  text-align: center;
+  margin-top: 16px;
+}
+.ydi-score {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.ydi-score-good { background: #d4edda; color: #155724; }
+.ydi-score-ok   { background: #fff3cd; color: #856404; }
+.ydi-score-off  { background: #f8d7da; color: #721c24; }
+
+.share-cta {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 12px 32px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: #333;
+  border: none;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+.share-cta:hover { background: #555; }
+
+@media (max-width: 600px) {
+  .share-app { padding: 20px 8px 12px; }
+  .ydi-chart-wrap h2 { font-size: 1rem; }
+  .ydi-value-label { font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<div class="share-app" id="app">
+  <div class="share-loading" id="share-loading">読み込み中...</div>
+  <div class="share-error" id="share-error" style="display:none"></div>
+  <div id="share-container" style="display:none"></div>
+  <div id="share-result" class="share-result" style="display:none"></div>
+</div>
+
+<script type="module">
+// ============================================================
+//  Share Page — 描いて答える折れ線グラフ（静的表示）
+// ============================================================
+
+const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
+
+const DEFAULTS = {
+  unit: "", yFormat: ",.0f", precision: 0, yExtent: 1.5, height: 300,
+  margin: { top: 20, right: 110, bottom: 40, left: 15 },
+  colors: { known: "#e41a1c", actual: "#4286bc", user: "#ffc700" },
+  buttonText: "答え合わせ",
+  drawPrompt: ["線を描いて", "予測してみよう"],
+  afterRevealHTML: "",
+};
+
+function clamp(min, max, val) { return Math.max(min, Math.min(max, val)); }
+
+function mergeConfig(cfg) {
+  return { ...DEFAULTS, ...cfg, margin: { ...DEFAULTS.margin, ...(cfg.margin || {}) }, colors: { ...DEFAULTS.colors, ...(cfg.colors || {}) } };
+}
+
+// --------------- ChartInstance (静的表示版) ---------------
+class ChartInstance {
+  constructor(parentEl, rawConfig) {
+    this.cfg = mergeConfig(rawConfig);
+    this.parentEl = parentEl;
+    this._buildDOM();
+    this._render();
+  }
+
+  _buildDOM() {
+    const { cfg } = this;
+    const wrap = document.createElement("div");
+    wrap.className = "ydi-chart-wrap";
+    wrap.id = `ydi-${cfg.id}`;
+    wrap.innerHTML = `
+      <h2>${cfg.title}</h2>
+      <div class="ydi-svg-container"></div>
+      <div class="ydi-button-area"></div>
+      <div class="ydi-after-reveal"></div>
+    `;
+    this.parentEl.appendChild(wrap);
+    this.wrapEl = wrap;
+    this.svgContainer = wrap.querySelector(".ydi-svg-container");
+  }
+
+  _render() {
+    const { cfg } = this;
+    const isMobile = window.innerWidth < 600;
+    this.svgContainer.innerHTML = "";
+
+    const totalWidth = this.svgContainer.offsetWidth || 560;
+    const margin = { ...cfg.margin };
+    if (isMobile) { margin.right = 55; margin.left = 10; }
+    const width = totalWidth - margin.left - margin.right;
+    const height = cfg.height;
+
+    const data = cfg.data;
+    const startX = data[0].x;
+    const endX = data[data.length - 1].x;
+    const drawStartX = cfg.drawStartX;
+    const drawStartIndex = data.findIndex(d => d.x >= drawStartX);
+    const xStep = data.length > 1 ? data[1].x - data[0].x : 1;
+
+    const xScale = d3.scaleLinear().domain([startX, endX]).range([0, width]);
+    const yMax = d3.max(data, d => d.y) * cfg.yExtent;
+    const yScale = d3.scaleLinear().domain([0, yMax]).nice().range([height, 0]);
+
+    const svg = d3.select(this.svgContainer).append("svg")
+      .attr("width", totalWidth).attr("height", height + margin.top + margin.bottom);
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    this.svg = svg; this.g = g; this.xScale = xScale; this.yScale = yScale;
+    this.width = width; this.height = height; this.margin = margin;
+
+    // Grid
+    const gridG = g.append("g").attr("class", "ydi-grid");
+    gridG.selectAll("line.v").data(data.map(d => d.x)).join("line")
+      .attr("x1", d => xScale(d)).attr("x2", d => xScale(d)).attr("y1", 0).attr("y2", height);
+    gridG.selectAll("line.h").data(yScale.ticks(5)).join("line")
+      .attr("x1", 0).attr("x2", width).attr("y1", d => yScale(d)).attr("y2", d => yScale(d));
+
+    const yFmt = d3.format(cfg.yFormat);
+
+    // X axis
+    g.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`)
+      .call(d3.axisBottom(xScale)
+        .tickValues(data.map(d => d.x).filter((_, i) => i % (isMobile ? 4 : 2) === 0 || _ === endX))
+        .tickFormat(d => d === startX ? d : "'" + String(d).slice(-2)).tickSize(6))
+      .select(".domain").remove();
+
+    // Y labels
+    g.selectAll(".ydi-y-label").data(yScale.ticks(5)).join("text")
+      .attr("class", "ydi-y-label").attr("x", -5).attr("y", d => yScale(d))
+      .attr("dy", "0.35em").attr("text-anchor", "end").attr("fill", "#888").attr("font-size", 11)
+      .text(d => yFmt(d));
+
+    // Divider
+    g.append("line").attr("class", "ydi-divider")
+      .attr("x1", xScale(drawStartX)).attr("x2", xScale(drawStartX)).attr("y1", 0).attr("y2", height);
+
+    const line = d3.line().x(d => xScale(d.x)).y(d => yScale(d.y));
+
+    // Known line
+    g.append("path").attr("class", "ydi-known-line")
+      .attr("d", line(data.filter(d => d.x <= drawStartX))).attr("stroke", cfg.colors.known);
+
+    // Actual line (fully visible — no clipPath)
+    const actualData = data.filter(d => d.x >= drawStartX);
+    const area = d3.area().x(d => xScale(d.x)).y0(height).y1(d => yScale(d.y));
+    g.append("path").attr("class", "ydi-area").attr("d", area(actualData)).attr("fill", cfg.colors.actual);
+    g.append("path").attr("class", "ydi-actual-line").attr("d", line(actualData)).attr("stroke", cfg.colors.actual);
+
+    const endPt = data[data.length - 1];
+    g.append("circle").attr("cx", xScale(endPt.x)).attr("cy", yScale(endPt.y)).attr("r", 5).attr("fill", cfg.colors.actual);
+    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(endPt.x) + 10)
+      .attr("y", yScale(endPt.y)).attr("dy", "0.35em").attr("fill", cfg.colors.actual).text(yFmt(endPt.y) + cfg.unit);
+
+    // Start & mid markers
+    const startPt = data[0];
+    g.append("circle").attr("cx", xScale(startPt.x)).attr("cy", yScale(startPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
+    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(startPt.x) - 10).attr("y", yScale(startPt.y))
+      .attr("dy", "0.35em").attr("text-anchor", "end").attr("fill", cfg.colors.known).text(yFmt(startPt.y) + cfg.unit);
+
+    const midPt = data[drawStartIndex];
+    g.append("circle").attr("cx", xScale(midPt.x)).attr("cy", yScale(midPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
+    const midLabelDy = drawStartIndex > 0 && midPt.y > data[drawStartIndex - 1].y ? -12 : 16;
+    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(midPt.x) - 8)
+      .attr("y", yScale(midPt.y) + midLabelDy).attr("text-anchor", "end").attr("fill", cfg.colors.known)
+      .text(yFmt(midPt.y) + cfg.unit);
+
+    // Store for renderPrediction
+    this.yFmt = yFmt;
+    this.data = data;
+    this.drawStartX = drawStartX;
+    this.endX = endX;
+  }
+
+  renderPrediction(predictionData) {
+    const { xScale, yScale, g, cfg, width } = this;
+
+    // Draw user prediction line
+    const userLine = d3.line()
+      .defined(d => d.prediction != null)
+      .x(d => xScale(d.x))
+      .y(d => yScale(d.prediction));
+    g.append("path").attr("class", "ydi-user-line").attr("d", userLine(predictionData)).attr("stroke", cfg.colors.user);
+
+    // User endpoint
+    const lastPt = predictionData[predictionData.length - 1];
+    if (lastPt) {
+      g.append("circle").attr("cx", xScale(lastPt.x)).attr("cy", yScale(lastPt.prediction))
+        .attr("r", 5).attr("fill", cfg.colors.user);
+
+      const displayVal = cfg.precision
+        ? this.yFmt(parseFloat(lastPt.prediction.toFixed(cfg.precision)))
+        : this.yFmt(lastPt.prediction);
+
+      // Avoid collision with actual end label
+      const endPt = this.data[this.data.length - 1];
+      let labelY = yScale(lastPt.prediction);
+      if (Math.abs(labelY - yScale(endPt.y)) < 18) {
+        labelY = labelY < yScale(endPt.y) ? yScale(endPt.y) - 18 : yScale(endPt.y) + 18;
+      }
+
+      g.append("text").attr("class", "ydi-value-label").attr("x", xScale(lastPt.x) + 10)
+        .attr("y", labelY).attr("dy", "0.35em").attr("fill", cfg.colors.user)
+        .text(displayVal + cfg.unit);
+    }
+
+    // Legend
+    const legendG = g.append("g").attr("class", "ydi-legend").style("opacity", 1)
+      .attr("transform", `translate(${width + 12},0)`);
+    legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 0).attr("y2", 0)
+      .attr("stroke", cfg.colors.user).attr("stroke-width", 3).attr("stroke-dasharray", "1 7").attr("stroke-linecap", "round");
+    legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 0)
+      .attr("dy", "0.35em").attr("fill", cfg.colors.user).text("予測");
+    legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 22).attr("y2", 22)
+      .attr("stroke", cfg.colors.actual).attr("stroke-width", 3).attr("stroke-linecap", "round");
+    legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 22)
+      .attr("dy", "0.35em").attr("fill", cfg.colors.actual).text("実際");
+  }
+}
+
+// --------------- Supabase待機 ---------------
+function waitForSupabase() {
+  return new Promise(resolve => {
+    if (window.datavizSupabase) return resolve(window.datavizSupabase);
+    const check = setInterval(() => {
+      if (window.datavizSupabase) { clearInterval(check); resolve(window.datavizSupabase); }
+    }, 200);
+    setTimeout(() => { clearInterval(check); resolve(null); }, 8000);
+  });
+}
+
+// --------------- 初期化 ---------------
+async function init() {
+  const loadingEl = document.getElementById("share-loading");
+  const errorEl = document.getElementById("share-error");
+  const containerEl = document.getElementById("share-container");
+  const resultEl = document.getElementById("share-result");
+
+  const params = new URLSearchParams(window.location.search);
+  const responseId = params.get("id");
+
+  if (!responseId) {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = "回答IDが指定されていません";
+    return;
+  }
+
+  const supabase = await waitForSupabase();
+  if (!supabase) {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = "データベースに接続できませんでした";
+    return;
+  }
+
+  try {
+    const { data: response, error } = await supabase
+      .from("quiz_responses")
+      .select("*, quiz_quizzes(*)")
+      .eq("id", responseId)
+      .single();
+
+    if (error || !response || !response.quiz_quizzes) {
+      loadingEl.style.display = "none";
+      errorEl.style.display = "block";
+      errorEl.textContent = "回答データが見つかりませんでした";
+      return;
+    }
+
+    const quiz = response.quiz_quizzes;
+    const cfg = { ...quiz.chart_config, id: responseId };
+    if (!cfg.title) cfg.title = quiz.title;
+
+    document.title = quiz.title + " — 結果をみる";
+
+    // Render chart
+    loadingEl.style.display = "none";
+    containerEl.style.display = "block";
+    resultEl.style.display = "block";
+
+    const chart = new ChartInstance(containerEl, cfg);
+    chart.renderPrediction(response.prediction_data);
+
+    // Score badge + CTA
+    let cls = "ydi-score-ok";
+    if (response.total_error < 0.5) cls = "ydi-score-good";
+    else if (response.total_error >= 2) cls = "ydi-score-off";
+
+    const quizUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${quiz.id}`;
+    resultEl.innerHTML = `
+      <div class="ydi-score ${cls}">${response.score_label || "回答済み"}</div>
+      <div style="margin-top:20px">
+        <a class="share-cta" href="${quizUrl}">自分もやってみる</a>
+      </div>
+    `;
+
+  } catch (e) {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = "エラーが発生しました";
+    console.error(e);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

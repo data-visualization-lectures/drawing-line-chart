@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>クイズ — 描いて答える折れ線グラフ</title>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WXY3CQ3RNF"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-WXY3CQ3RNF');
+</script>
+<!-- Supabase (dataviz.jp shared client) -->
+<script src="https://auth.dataviz.jp/lib/supabase.js"></script>
+<!-- D3.js -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #333;
+  background: #fff;
+  line-height: 1.6;
+}
+
+.quiz-app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px 16px 20px;
+}
+
+/* Loading / Error states */
+.quiz-loading, .quiz-error {
+  text-align: center;
+  padding: 80px 20px;
+  color: #999;
+  font-size: 1rem;
+}
+.quiz-error { color: #c00; }
+
+/* --- Chart styles (same as index.html) --- */
+.ydi-chart-wrap {
+  margin-bottom: 48px;
+  position: relative;
+}
+.ydi-chart-wrap h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+.ydi-chart-wrap svg {
+  display: block;
+  margin: 0 auto;
+  overflow: visible;
+  font: 300 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.ydi-grid line { stroke: #e0e0e0; stroke-width: 1; shape-rendering: crispEdges; }
+.ydi-chart-wrap .axis path, .ydi-chart-wrap .axis line { stroke: #ccc; shape-rendering: crispEdges; }
+.ydi-chart-wrap .axis text { fill: #888; font-size: 12px; }
+.ydi-known-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.ydi-actual-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.ydi-area { opacity: 0.12; }
+.ydi-user-line { fill: none; stroke-width: 3; stroke-dasharray: 1 7; stroke-linecap: round; }
+.ydi-drag-rect { fill-opacity: 0; cursor: pointer; }
+.ydi-flash-rect { fill: rgba(255, 200, 0, 0.7); fill-opacity: 0; }
+.ydi-flash-rect.ydi-pending { animation: ydi-flash 0.6s ease-in-out alternate infinite; }
+@keyframes ydi-flash { from { fill-opacity: 0; } to { fill-opacity: 0.5; } }
+.ydi-value-label { font-size: 13px; font-weight: 700; }
+.ydi-draw-prompt { font-size: 15px; font-weight: 600; fill: #999; text-anchor: middle; pointer-events: none; transition: opacity 0.3s; }
+.ydi-endpoint { transition: opacity 0.3s; }
+.ydi-drag-started .ydi-draw-prompt { opacity: 0; }
+.ydi-drag-started .ydi-flash-rect.ydi-pending { animation: ydi-flash 0.4s ease-in-out alternate infinite; }
+.ydi-button-area { text-align: center; margin-top: 12px; transition: opacity 0.3s; }
+.ydi-button { display: inline-block; padding: 10px 28px; font-size: 15px; font-weight: 600; color: #fff; background: #333; border: none; border-radius: 4px; cursor: pointer; opacity: 0.25; pointer-events: none; transition: opacity 0.3s, background 0.2s; }
+.ydi-ready .ydi-button { opacity: 1; pointer-events: auto; }
+.ydi-button:hover { background: #555; }
+.ydi-after-reveal { text-align: center; margin-top: 12px; font-size: 0.95rem; color: #555; opacity: 0; max-height: 0; overflow: hidden; transition: opacity 0.5s 0.6s, max-height 0.5s 0.6s; }
+.ydi-guessed .ydi-button-area { opacity: 0; pointer-events: none; }
+.ydi-guessed .ydi-after-reveal { opacity: 1; max-height: 300px; }
+.ydi-guessed .ydi-drag-rect { pointer-events: none; }
+.ydi-score { display: inline-block; margin-top: 4px; padding: 4px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem; }
+.ydi-score-good { background: #d4edda; color: #155724; }
+.ydi-score-ok   { background: #fff3cd; color: #856404; }
+.ydi-score-off  { background: #f8d7da; color: #721c24; }
+.ydi-divider { stroke: #ccc; stroke-width: 1; stroke-dasharray: 4 3; shape-rendering: crispEdges; }
+.ydi-legend { opacity: 0; transition: opacity 0.5s 0.8s; }
+.ydi-guessed .ydi-legend { opacity: 1; }
+.ydi-legend-label { font-size: 12px; font-weight: 600; }
+
+/* Share area */
+.ydi-share-area { margin-top: 12px; }
+.ydi-share-url {
+  display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 8px;
+}
+.ydi-share-url input {
+  flex: 1; max-width: 300px; padding: 6px 10px; font-size: 0.85rem;
+  border: 1px solid #ddd; border-radius: 4px; background: #f8f8f8;
+}
+.ydi-share-btn {
+  display: inline-block; padding: 6px 14px; font-size: 13px; font-weight: 600;
+  color: #555; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px;
+  cursor: pointer; transition: background 0.2s; text-decoration: none;
+}
+.ydi-share-btn:hover { background: #e0e0e0; }
+
+@media (max-width: 600px) {
+  .quiz-app { padding: 20px 8px 12px; }
+  .ydi-chart-wrap h2 { font-size: 1rem; }
+  .ydi-draw-prompt { font-size: 13px; }
+  .ydi-value-label { font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<div class="quiz-app" id="app">
+  <div class="quiz-loading" id="quiz-loading">読み込み中...</div>
+  <div class="quiz-error" id="quiz-error" style="display:none"></div>
+  <div id="quiz-container" style="display:none"></div>
+</div>
+
+<script type="module">
+// ============================================================
+//  Quiz Page — 描いて答える折れ線グラフ
+// ============================================================
+
+const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
+
+// --------------- デフォルト設定 ---------------
+const DEFAULTS = {
+  unit: "",
+  yFormat: ",.0f",
+  precision: 0,
+  yExtent: 1.5,
+  height: 300,
+  margin: { top: 20, right: 110, bottom: 40, left: 15 },
+  colors: { known: "#e41a1c", actual: "#4286bc", user: "#ffc700" },
+  buttonText: "答え合わせ",
+  drawPrompt: ["線を描いて", "予測してみよう"],
+  afterRevealHTML: "",
+};
+
+function clamp(min, max, val) {
+  return Math.max(min, Math.min(max, val));
+}
+
+function mergeConfig(cfg) {
+  return {
+    ...DEFAULTS,
+    ...cfg,
+    margin: { ...DEFAULTS.margin, ...(cfg.margin || {}) },
+    colors: { ...DEFAULTS.colors, ...(cfg.colors || {}) },
+  };
+}
+
+// --------------- ChartInstance ---------------
+class ChartInstance {
+  constructor(parentEl, rawConfig) {
+    this.cfg = mergeConfig(rawConfig);
+    this.state = "idle";
+    this.parentEl = parentEl;
+    this._buildDOM();
+    this._render();
+  }
+
+  _buildDOM() {
+    const { cfg } = this;
+    const wrap = document.createElement("div");
+    wrap.className = "ydi-chart-wrap";
+    wrap.id = `ydi-${cfg.id}`;
+    wrap.innerHTML = `
+      <h2>${cfg.title}</h2>
+      <div class="ydi-svg-container"></div>
+      <div class="ydi-button-area">
+        <button class="ydi-button">${cfg.buttonText}</button>
+      </div>
+      <div class="ydi-after-reveal">${cfg.afterRevealHTML}</div>
+    `;
+    this.parentEl.appendChild(wrap);
+    this.wrapEl = wrap;
+    this.svgContainer = wrap.querySelector(".ydi-svg-container");
+    this.buttonEl = wrap.querySelector(".ydi-button");
+    this.buttonEl.addEventListener("click", () => this._reveal());
+  }
+
+  _render() {
+    const { cfg } = this;
+    const isMobile = window.innerWidth < 600;
+    this.svgContainer.innerHTML = "";
+
+    const totalWidth = this.svgContainer.offsetWidth || 560;
+    const margin = { ...cfg.margin };
+    if (isMobile) { margin.right = 55; margin.left = 10; }
+    const width = totalWidth - margin.left - margin.right;
+    const height = cfg.height;
+
+    const data = cfg.data;
+    const startX = data[0].x;
+    const endX = data[data.length - 1].x;
+    const drawStartX = cfg.drawStartX;
+    const drawStartIndex = data.findIndex(d => d.x >= drawStartX);
+    const xStep = data.length > 1 ? data[1].x - data[0].x : 1;
+
+    const xScale = d3.scaleLinear().domain([startX, endX]).range([0, width]);
+    const yMax = d3.max(data, d => d.y) * cfg.yExtent;
+    const yScale = d3.scaleLinear().domain([0, yMax]).nice().range([height, 0]);
+
+    const svg = d3.select(this.svgContainer).append("svg")
+      .attr("width", totalWidth).attr("height", height + margin.top + margin.bottom);
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    this.svg = svg; this.g = g; this.xScale = xScale; this.yScale = yScale;
+    this.width = width; this.height = height; this.margin = margin;
+
+    // Grid
+    const gridG = g.append("g").attr("class", "ydi-grid");
+    gridG.selectAll("line.v").data(data.map(d => d.x)).join("line")
+      .attr("x1", d => xScale(d)).attr("x2", d => xScale(d)).attr("y1", 0).attr("y2", height);
+    gridG.selectAll("line.h").data(yScale.ticks(5)).join("line")
+      .attr("x1", 0).attr("x2", width).attr("y1", d => yScale(d)).attr("y2", d => yScale(d));
+
+    const yFmt = d3.format(cfg.yFormat);
+
+    // X axis
+    const xAxisG = g.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`)
+      .call(d3.axisBottom(xScale)
+        .tickValues(data.map(d => d.x).filter((_, i) => i % (isMobile ? 4 : 2) === 0 || _ === endX))
+        .tickFormat(d => d === startX ? d : "'" + String(d).slice(-2)).tickSize(6));
+    xAxisG.select(".domain").remove();
+
+    // Y labels
+    g.selectAll(".ydi-y-label").data(yScale.ticks(5)).join("text")
+      .attr("class", "ydi-y-label").attr("x", -5).attr("y", d => yScale(d))
+      .attr("dy", "0.35em").attr("text-anchor", "end").attr("fill", "#888").attr("font-size", 11)
+      .text(d => yFmt(d));
+
+    // Divider
+    g.append("line").attr("class", "ydi-divider")
+      .attr("x1", xScale(drawStartX)).attr("x2", xScale(drawStartX)).attr("y1", 0).attr("y2", height);
+
+    // Lines
+    const line = d3.line().x(d => xScale(d.x)).y(d => yScale(d.y));
+    const knownData = data.filter(d => d.x <= drawStartX);
+    g.append("path").attr("class", "ydi-known-line").attr("d", line(knownData)).attr("stroke", cfg.colors.known);
+
+    // ClipPath
+    const clipId = `ydi-clip-${cfg.id}`;
+    const clipRect = svg.append("defs").append("clipPath").attr("id", clipId)
+      .append("rect").attr("x", 0).attr("y", 0)
+      .attr("width", xScale(drawStartX) + margin.left - 1).attr("height", height + margin.top + margin.bottom);
+    this.clipRect = clipRect;
+
+    const actualG = g.append("g").attr("clip-path", `url(#${clipId})`);
+    const area = d3.area().x(d => xScale(d.x)).y0(height).y1(d => yScale(d.y));
+    const actualData = data.filter(d => d.x >= drawStartX);
+    actualG.append("path").attr("class", "ydi-area").attr("d", area(actualData)).attr("fill", cfg.colors.actual);
+    actualG.append("path").attr("class", "ydi-actual-line").attr("d", line(actualData)).attr("stroke", cfg.colors.actual);
+
+    const endPt = data[data.length - 1];
+    actualG.append("circle").attr("cx", xScale(endPt.x)).attr("cy", yScale(endPt.y)).attr("r", 5).attr("fill", cfg.colors.actual);
+    actualG.append("text").attr("class", "ydi-value-label").attr("x", xScale(endPt.x) + 10)
+      .attr("y", yScale(endPt.y)).attr("dy", "0.35em").attr("fill", cfg.colors.actual).text(yFmt(endPt.y) + cfg.unit);
+
+    // Start & mid markers
+    const startPt = data[0];
+    g.append("circle").attr("cx", xScale(startPt.x)).attr("cy", yScale(startPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
+    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(startPt.x) - 10).attr("y", yScale(startPt.y))
+      .attr("dy", "0.35em").attr("text-anchor", "end").attr("fill", cfg.colors.known).text(yFmt(startPt.y) + cfg.unit);
+
+    const midPt = data[drawStartIndex];
+    g.append("circle").attr("cx", xScale(midPt.x)).attr("cy", yScale(midPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
+    const midLabelDy = drawStartIndex > 0 && midPt.y > data[drawStartIndex - 1].y ? -12 : 16;
+    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(midPt.x) - 8)
+      .attr("y", yScale(midPt.y) + midLabelDy).attr("text-anchor", "end").attr("fill", cfg.colors.known)
+      .text(yFmt(midPt.y) + cfg.unit);
+
+    // User data
+    this.userData = data.filter(d => d.x >= drawStartX && d.x <= endX)
+      .map(d => ({ x: d.x, y: d.y, userY: null, defined: false }));
+    this.userData[0].userY = midPt.y;
+    this.userData[0].defined = true;
+
+    // Flash rects
+    const flashRects = g.append("g").attr("class", "ydi-flash-rects");
+    this.flashRectsSel = flashRects.selectAll("rect").data(this.userData.slice(1)).join("rect")
+      .attr("class", "ydi-flash-rect ydi-pending")
+      .attr("x", d => xScale(d.x) - (xScale(xStep) - xScale(0)) / 2).attr("y", 0)
+      .attr("width", xScale(xStep) - xScale(0)).attr("height", height);
+
+    this.userLineSel = g.append("path").attr("class", "ydi-user-line").attr("stroke", cfg.colors.user);
+    this.userCircleSel = g.append("circle").attr("class", "ydi-endpoint").attr("r", 5).attr("fill", cfg.colors.user).attr("opacity", 0);
+    this.userValueSel = g.append("text").attr("class", "ydi-value-label").attr("dy", "0.35em").attr("fill", cfg.colors.user).attr("opacity", 0);
+
+    // Draw prompt
+    const promptG = g.append("text").attr("class", "ydi-draw-prompt")
+      .attr("x", xScale((drawStartX + endX) / 2)).attr("y", height / 3);
+    cfg.drawPrompt.forEach((ln, i) => {
+      promptG.append("tspan").attr("x", xScale((drawStartX + endX) / 2)).attr("dy", i === 0 ? 0 : "1.4em").text(ln);
+    });
+
+    // Drag rect
+    const dragRect = g.append("rect").attr("class", "ydi-drag-rect")
+      .attr("x", xScale(drawStartX)).attr("y", 0).attr("width", xScale(endX) - xScale(drawStartX))
+      .attr("height", height).attr("fill", cfg.colors.user);
+
+    const self = this;
+    const drag = d3.drag()
+      .on("drag", function(event) { self._handleDrag(event, this); })
+      .on("start", function(event) { self._handleDrag(event, this); });
+    if (window.innerWidth > 600) {
+      g.call(drag).on("click", function(event) { self._handleDrag(event, this); });
+    } else {
+      dragRect.call(drag).on("click", function(event) { self._handleDrag(event, this); });
+    }
+
+    this.yFmt = yFmt; this.xStep = xStep; this.endX = endX;
+    this.drawStartX = drawStartX; this.actualEndValue = endPt.y; this.actualEndY = yScale(endPt.y);
+
+    if (!this._resizeObserver) {
+      this._resizeObserver = new ResizeObserver(() => {
+        if (this.state === "revealed") return;
+        clearTimeout(this._resizeTimer);
+        this._resizeTimer = setTimeout(() => { if (this.state !== "revealed") this._render(); }, 200);
+      });
+      this._resizeObserver.observe(this.svgContainer);
+    }
+  }
+
+  _handleDrag(event, el) {
+    if (this.state === "revealed") return;
+    const { xScale, yScale, cfg, userData } = this;
+    const [mx, my] = d3.pointer(event, this.g.node());
+    const xStep = this.xStep;
+    const xVal = clamp(cfg.drawStartX + xStep * 0.5, this.endX + xStep * 0.5, xScale.invert(mx));
+    const yVal = clamp(0, yScale.domain()[1], yScale.invert(my));
+
+    let lastDefinedIdx = 0;
+    for (let i = userData.length - 1; i >= 0; i--) {
+      if (userData[i].defined) { lastDefinedIdx = i; break; }
+    }
+
+    userData.forEach((d, i) => {
+      if (Math.abs(d.x - xVal) < xStep * 0.5) {
+        d.userY = yVal; d.defined = true;
+        const gap = i - lastDefinedIdx;
+        if (gap > 1) {
+          for (let j = 1; j < gap; j++) {
+            const t = j / gap;
+            userData[lastDefinedIdx + j].userY = userData[lastDefinedIdx].userY * (1 - t) + yVal * t;
+            userData[lastDefinedIdx + j].defined = true;
+          }
+        }
+      }
+    });
+
+    if (this.state === "idle") { this.state = "drawing"; this.wrapEl.classList.add("ydi-drag-started"); }
+
+    this.flashRectsSel.each(function(d) {
+      if (d.defined) d3.select(this).classed("ydi-pending", false).attr("fill-opacity", 0);
+    });
+
+    const userLine = d3.line().defined(d => d.defined).x(d => xScale(d.x)).y(d => yScale(d.userY));
+    this.userLineSel.attr("d", userLine(userData));
+
+    const lastDefined = [...userData].reverse().find(d => d.defined);
+    if (lastDefined && lastDefined.x > this.drawStartX) {
+      this.userCircleSel.attr("cx", xScale(lastDefined.x)).attr("cy", yScale(lastDefined.userY)).attr("opacity", 1);
+      const displayVal = cfg.precision
+        ? this.yFmt(parseFloat(lastDefined.userY.toFixed(cfg.precision)))
+        : this.yFmt(lastDefined.userY);
+      this.userValueSel.attr("x", xScale(lastDefined.x) + 10).attr("y", yScale(lastDefined.userY))
+        .attr("text-anchor", "start").attr("opacity", 1).text(displayVal + cfg.unit);
+    }
+
+    if (userData.every(d => d.defined) && this.state !== "ready") {
+      this.state = "ready"; this.wrapEl.classList.add("ydi-ready");
+    }
+  }
+
+  _reveal() {
+    if (this.state !== "ready") return;
+    this.state = "revealed";
+    this.wrapEl.classList.add("ydi-guessed");
+
+    const { xScale, yScale, width, margin, cfg, userData } = this;
+
+    this.clipRect.transition().duration(1000).ease(d3.easeLinear)
+      .attr("width", width + margin.left + margin.right + 20);
+
+    // Legend
+    const legendG = this.g.append("g").attr("class", "ydi-legend")
+      .attr("transform", `translate(${width + 12},0)`);
+    legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 0).attr("y2", 0)
+      .attr("stroke", cfg.colors.user).attr("stroke-width", 3).attr("stroke-dasharray", "1 7").attr("stroke-linecap", "round");
+    legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 0)
+      .attr("dy", "0.35em").attr("fill", cfg.colors.user).text("あなたの予測");
+    legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 22).attr("y2", 22)
+      .attr("stroke", cfg.colors.actual).attr("stroke-width", 3).attr("stroke-linecap", "round");
+    legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 22)
+      .attr("dy", "0.35em").attr("fill", cfg.colors.actual).text("実際のデータ");
+
+    // Value label collision
+    const userEndY = yScale(userData[userData.length - 1].userY);
+    const actualEndY = this.actualEndY;
+    if (Math.abs(userEndY - actualEndY) < 18) {
+      const offset = userEndY < actualEndY ? -18 : 18;
+      this.userValueSel.transition().duration(300).attr("y", actualEndY + offset);
+    }
+
+    // Score
+    const scores = userData.slice(1).map(d => d.userY / d.y);
+    const totalError = d3.sum(scores, s => Math.abs(1 - s));
+    const avgRatio = d3.mean(scores);
+    let label, cls;
+    if (totalError < 0.5) { label = "ほぼ正解！"; cls = "ydi-score-good"; }
+    else if (totalError < 2) { label = "惜しい！"; cls = "ydi-score-ok"; }
+    else { label = avgRatio < 0.7 ? "低すぎ！" : avgRatio > 1.3 ? "高すぎ！" : "ちょっとずれてる"; cls = "ydi-score-off"; }
+
+    // Export data
+    this.exportData = userData.map(d => ({
+      x: d.x, actual: d.y,
+      prediction: cfg.precision ? parseFloat(d.userY.toFixed(cfg.precision)) : Math.round(d.userY),
+    }));
+    this.scoreResult = { totalError, avgRatio, label, cls };
+
+    const afterEl = this.wrapEl.querySelector(".ydi-after-reveal");
+    afterEl.innerHTML = `<div class="ydi-score ${cls}">${label}</div>`;
+
+    // Dispatch event
+    this.wrapEl.dispatchEvent(new CustomEvent("you-draw-it:revealed", {
+      bubbles: true,
+      detail: { id: cfg.id, totalError, avgRatio, label, exportData: this.exportData },
+    }));
+  }
+}
+
+// --------------- Supabase待機 ---------------
+function waitForSupabase() {
+  return new Promise(resolve => {
+    if (window.datavizSupabase) return resolve(window.datavizSupabase);
+    const check = setInterval(() => {
+      if (window.datavizSupabase) { clearInterval(check); resolve(window.datavizSupabase); }
+    }, 200);
+    setTimeout(() => { clearInterval(check); resolve(null); }, 8000);
+  });
+}
+
+// --------------- 初期化 ---------------
+async function init() {
+  const loadingEl = document.getElementById("quiz-loading");
+  const errorEl = document.getElementById("quiz-error");
+  const containerEl = document.getElementById("quiz-container");
+
+  const params = new URLSearchParams(window.location.search);
+  const quizId = params.get("id");
+
+  if (!quizId) {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = "クイズIDが指定されていません";
+    return;
+  }
+
+  const supabase = await waitForSupabase();
+  if (!supabase) {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = "データベースに接続できませんでした";
+    return;
+  }
+
+  try {
+    const { data: quiz, error } = await supabase
+      .from("quiz_quizzes")
+      .select("*")
+      .eq("id", quizId)
+      .single();
+
+    if (error || !quiz) {
+      loadingEl.style.display = "none";
+      errorEl.style.display = "block";
+      errorEl.textContent = "クイズが見つかりませんでした";
+      return;
+    }
+
+    // Render chart
+    loadingEl.style.display = "none";
+    containerEl.style.display = "block";
+    document.title = quiz.title + " — 描いて答える折れ線グラフ";
+
+    const cfg = { ...quiz.chart_config, id: quizId };
+    if (!cfg.title) cfg.title = quiz.title;
+
+    const chart = new ChartInstance(containerEl, cfg);
+
+    // Listen for reveal → save response
+    containerEl.addEventListener("you-draw-it:revealed", async (e) => {
+      const { exportData, totalError, avgRatio, label } = e.detail;
+
+      try {
+        const { data: response, error: insertErr } = await supabase
+          .from("quiz_responses")
+          .insert({
+            quiz_id: quizId,
+            prediction_data: exportData,
+            score_label: label,
+            total_error: totalError,
+            avg_ratio: avgRatio,
+          })
+          .select("id")
+          .single();
+
+        if (insertErr) throw insertErr;
+
+        // Show share URL
+        const shareUrl = `${DEPLOY_ORIGIN}/share.html?id=${response.id}`;
+        const afterEl = containerEl.querySelector(".ydi-after-reveal");
+        const existing = afterEl.innerHTML;
+        afterEl.innerHTML = existing + `
+          <div class="ydi-share-area">
+            <p style="margin-top:12px;font-weight:600">結果をシェアしよう</p>
+            <div class="ydi-share-url">
+              <input type="text" value="${shareUrl}" readonly id="share-url-input">
+              <button class="ydi-share-btn" id="share-copy-btn">コピー</button>
+            </div>
+          </div>
+        `;
+
+        document.getElementById("share-copy-btn").addEventListener("click", () => {
+          navigator.clipboard.writeText(shareUrl).then(() => {
+            document.getElementById("share-copy-btn").textContent = "コピー済み";
+            setTimeout(() => { document.getElementById("share-copy-btn").textContent = "コピー"; }, 2000);
+          });
+        });
+      } catch (saveErr) {
+        console.error("Response save failed:", saveErr);
+      }
+    });
+
+  } catch (e) {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = "エラーが発生しました";
+    console.error(e);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
