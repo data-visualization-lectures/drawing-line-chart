@@ -1676,27 +1676,30 @@ function handleFile(file) {
         const rows = d3.csvParse(text);
         const cols = Object.keys(rows[0] || {});
         if (cols.length < 2) throw new Error("2列以上のCSVが必要です");
-        // 最初の列をx（時系列）とし、y列は最初の数値列を自動検出
-        const xCol = cols[0];
-        let yCol = cols[1];
-        if (rows.length > 0) {
-          // 各列の数値変換成功率を調べ、最も高い列をy列にする（x列以外）
-          let bestCol = cols[1];
-          let bestRate = 0;
-          for (let i = 1; i < cols.length; i++) {
-            const numericCount = rows.filter(r => !isNaN(parseFloat(String(r[cols[i]]).replace(/,/g, "")))).length;
-            const rate = numericCount / rows.length;
-            if (rate > bestRate) { bestRate = rate; bestCol = cols[i]; }
-          }
-          yCol = bestCol;
+
+        // 時系列列を左からスキャン: 年(4桁数値)または日付文字列を含む列
+        function isTimeSeries(col) {
+          const sample = rows.slice(0, Math.min(10, rows.length));
+          return sample.filter(r => {
+            const v = String(r[col]).trim();
+            return /^\d{4}$/.test(v) || /\d{4}[-\/]/.test(v);
+          }).length > sample.length * 0.5;
         }
+        // 数値列を左からスキャン: 大半の行が数値に変換できる列
+        function isNumeric(col) {
+          const sample = rows.slice(0, Math.min(10, rows.length));
+          return sample.filter(r => !isNaN(parseFloat(String(r[col]).replace(/,/g, "")))).length > sample.length * 0.5;
+        }
+
+        const xCol = cols.find(c => isTimeSeries(c));
+        const yCol = cols.find(c => c !== xCol && isNumeric(c));
+        if (!xCol || !yCol) throw new Error("時系列列と数値列が見つかりません");
+
         parsed = rows.map(d => {
           const rawX = d[xCol];
           const rawY = d[yCol];
-          // xを数値に変換（年、数値、日付の年部分に対応）
           let x = parseFloat(rawX);
           if (isNaN(x)) {
-            // 日付文字列から年を抽出（例: "2020-01-01" → 2020）
             const dateMatch = String(rawX).match(/(\d{4})/);
             if (dateMatch) x = parseInt(dateMatch[1]);
           }
