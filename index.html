@@ -561,6 +561,16 @@ body {
       <p style="font-size:0.8rem;margin-top:4px">形式: x,y（1行目はヘッダー）</p>
       <input type="file" id="file-input" accept=".csv,.json">
     </div>
+    <div class="ydi-field-row" id="col-select-row" style="display:none">
+      <div>
+        <label for="col-x">X軸（時系列）</label>
+        <select id="col-x"></select>
+      </div>
+      <div>
+        <label for="col-y">Y軸（数値）</label>
+        <select id="col-y"></select>
+      </div>
+    </div>
     <div class="ydi-data-preview" id="data-preview" style="display:none"></div>
 
     <h2>2. クイズの設定</h2>
@@ -632,6 +642,8 @@ body {
 
 // --------------- アップロードデータ管理 ---------------
 let uploadedData = null; // [{x, y}, ...]
+let csvRawRows = null;   // CSVの生データ（列選択変更用）
+let csvCols = null;      // CSVの列名リスト
 
 // --------------- デフォルト設定 ---------------
 const DEFAULTS = {
@@ -1663,6 +1675,44 @@ fileInput.addEventListener("change", (e) => {
   if (e.target.files[0]) handleFile(e.target.files[0]);
 });
 
+// 時系列列判定: 年(4桁数値)または日付文字列を含む列
+function isTimeSeriesCol(rows, col) {
+  const sample = rows.slice(0, Math.min(10, rows.length));
+  return sample.filter(r => {
+    const v = String(r[col]).trim();
+    return /^\d{4}$/.test(v) || /\d{4}[-\/]/.test(v);
+  }).length > sample.length * 0.5;
+}
+// 数値列判定: 大半の行が数値に変換できる列
+function isNumericCol(rows, col) {
+  const sample = rows.slice(0, Math.min(10, rows.length));
+  return sample.filter(r => !isNaN(parseFloat(String(r[col]).replace(/,/g, "")))).length > sample.length * 0.5;
+}
+
+// 選択中の列でデータをパースし直す
+function parseWithColumns(xColName, yColName) {
+  if (!csvRawRows) return;
+  const parsed = csvRawRows.map(d => {
+    const rawX = d[xColName];
+    const rawY = d[yColName];
+    let x = parseFloat(rawX);
+    if (isNaN(x)) {
+      const dateMatch = String(rawX).match(/(\d{4})/);
+      if (dateMatch) x = parseInt(dateMatch[1]);
+    }
+    const y = parseFloat(String(rawY).replace(/,/g, ""));
+    return { x, y };
+  }).filter(d => !isNaN(d.x) && !isNaN(d.y));
+
+  if (parsed.length < 2) {
+    showMessage("有効なデータが2行未満です。列の選択を確認してください。", "error");
+    return;
+  }
+  parsed.sort((a, b) => a.x - b.x);
+  uploadedData = parsed;
+  onDataLoaded();
+}
+
 function handleFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -1672,32 +1722,32 @@ function handleFile(file) {
       if (file.name.endsWith(".json")) {
         parsed = JSON.parse(text);
         if (!Array.isArray(parsed)) throw new Error("JSONは配列形式にしてください");
+        csvRawRows = null;
+        csvCols = null;
+        document.getElementById("col-select-row").style.display = "none";
       } else {
         const rows = d3.csvParse(text);
         const cols = Object.keys(rows[0] || {});
         if (cols.length < 2) throw new Error("2列以上のCSVが必要です");
 
-        // 時系列列を左からスキャン: 年(4桁数値)または日付文字列を含む列
-        function isTimeSeries(col) {
-          const sample = rows.slice(0, Math.min(10, rows.length));
-          return sample.filter(r => {
-            const v = String(r[col]).trim();
-            return /^\d{4}$/.test(v) || /\d{4}[-\/]/.test(v);
-          }).length > sample.length * 0.5;
-        }
-        // 数値列を左からスキャン: 大半の行が数値に変換できる列
-        function isNumeric(col) {
-          const sample = rows.slice(0, Math.min(10, rows.length));
-          return sample.filter(r => !isNaN(parseFloat(String(r[col]).replace(/,/g, "")))).length > sample.length * 0.5;
-        }
+        csvRawRows = rows;
+        csvCols = cols;
 
-        const xCol = cols.find(c => isTimeSeries(c));
-        const yCol = cols.find(c => c !== xCol && isNumeric(c));
-        if (!xCol || !yCol) throw new Error("時系列列と数値列が見つかりません");
+        // 自動検出
+        const autoX = cols.find(c => isTimeSeriesCol(rows, c));
+        const autoY = cols.find(c => c !== autoX && isNumericCol(rows, c));
+        if (!autoX || !autoY) throw new Error("時系列列と数値列が見つかりません");
+
+        // ドロップダウンを設定
+        const colXSel = document.getElementById("col-x");
+        const colYSel = document.getElementById("col-y");
+        colXSel.innerHTML = cols.map(c => `<option value="${c}"${c === autoX ? " selected" : ""}>${c}</option>`).join("");
+        colYSel.innerHTML = cols.map(c => `<option value="${c}"${c === autoY ? " selected" : ""}>${c}</option>`).join("");
+        document.getElementById("col-select-row").style.display = "";
 
         parsed = rows.map(d => {
-          const rawX = d[xCol];
-          const rawY = d[yCol];
+          const rawX = d[autoX];
+          const rawY = d[autoY];
           let x = parseFloat(rawX);
           if (isNaN(x)) {
             const dateMatch = String(rawX).match(/(\d{4})/);
@@ -1720,6 +1770,14 @@ function handleFile(file) {
   };
   reader.readAsText(file);
 }
+
+// 列選択ドロップダウンの変更イベント
+document.getElementById("col-x").addEventListener("change", () => {
+  parseWithColumns(document.getElementById("col-x").value, document.getElementById("col-y").value);
+});
+document.getElementById("col-y").addEventListener("change", () => {
+  parseWithColumns(document.getElementById("col-x").value, document.getElementById("col-y").value);
+});
 
 function onDataLoaded() {
   // Update dropzone
