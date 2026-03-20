@@ -894,10 +894,9 @@ class ChartInstance {
 
     g.append("text")
       .attr("class", "ydi-value-label")
-      .attr("x", xScale(startPt.x) - 10)
-      .attr("y", yScale(startPt.y))
-      .attr("dy", "0.35em")
-      .attr("text-anchor", "end")
+      .attr("x", xScale(startPt.x))
+      .attr("y", yScale(startPt.y) - 12)
+      .attr("text-anchor", "middle")
       .attr("fill", cfg.colors.known)
       .text(yFmt(startPt.y) + cfg.unit);
 

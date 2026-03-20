@@ -249,8 +249,8 @@ class ChartInstance {
     // Start & mid markers
     const startPt = data[0];
     g.append("circle").attr("cx", xScale(startPt.x)).attr("cy", yScale(startPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
-    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(startPt.x) - 10).attr("y", yScale(startPt.y))
-      .attr("dy", "0.35em").attr("text-anchor", "end").attr("fill", cfg.colors.known).text(yFmt(startPt.y) + cfg.unit);
+    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(startPt.x)).attr("y", yScale(startPt.y) - 12)
+      .attr("text-anchor", "middle").attr("fill", cfg.colors.known).text(yFmt(startPt.y) + cfg.unit);
 
     const midPt = data[drawStartIndex];
     g.append("circle").attr("cx", xScale(midPt.x)).attr("cy", yScale(midPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
