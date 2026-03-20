@@ -1676,9 +1676,23 @@ function handleFile(file) {
         const rows = d3.csvParse(text);
         const cols = Object.keys(rows[0] || {});
         if (cols.length < 2) throw new Error("2列以上のCSVが必要です");
+        // 最初の列をx（時系列）とし、y列は最初の数値列を自動検出
+        const xCol = cols[0];
+        let yCol = cols[1];
+        if (rows.length > 0) {
+          // 各列の数値変換成功率を調べ、最も高い列をy列にする（x列以外）
+          let bestCol = cols[1];
+          let bestRate = 0;
+          for (let i = 1; i < cols.length; i++) {
+            const numericCount = rows.filter(r => !isNaN(parseFloat(String(r[cols[i]]).replace(/,/g, "")))).length;
+            const rate = numericCount / rows.length;
+            if (rate > bestRate) { bestRate = rate; bestCol = cols[i]; }
+          }
+          yCol = bestCol;
+        }
         parsed = rows.map(d => {
-          const rawX = d[cols[0]];
-          const rawY = d[cols[1]];
+          const rawX = d[xCol];
+          const rawY = d[yCol];
           // xを数値に変換（年、数値、日付の年部分に対応）
           let x = parseFloat(rawX);
           if (isNaN(x)) {
