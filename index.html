@@ -1711,6 +1711,12 @@ function parseWithColumns(xColName, yColName) {
     showMessage("有効なデータが2行未満です。列の選択を確認してください。", "error");
     return;
   }
+  const dupX = parsed.map(d => d.x).filter((v, i, a) => a.indexOf(v) !== i);
+  if (dupX.length > 0) {
+    const examples = [...new Set(dupX)].slice(0, 3).join(", ");
+    showMessage(`X軸の値に重複があります（${examples}など）。1つの時点に1つの値になるようデータを整理してください。`, "error");
+    return;
+  }
   parsed.sort((a, b) => a.x - b.x);
   uploadedData = parsed;
   onDataLoaded();
@@ -1764,6 +1770,11 @@ function handleFile(file) {
       // Validate
       parsed = parsed.filter(d => !isNaN(d.x) && !isNaN(d.y));
       if (parsed.length < 2) throw new Error("2点以上のデータが必要です");
+      const dupX = parsed.map(d => d.x).filter((v, i, a) => a.indexOf(v) !== i);
+      if (dupX.length > 0) {
+        const examples = [...new Set(dupX)].slice(0, 3).join(", ");
+        throw new Error(`X軸の値に重複があります（${examples}など）。1つの時点に1つの値になるようデータを整理してください。`);
+      }
       parsed.sort((a, b) => a.x - b.x);
 
       uploadedData = parsed;
