@@ -1741,11 +1741,12 @@ function handleFile(file) {
         const autoY = cols.find(c => c !== autoX && isNumericCol(rows, c));
         if (!autoX || !autoY) throw new Error("時系列列と数値列が見つかりません");
 
-        // ドロップダウンを設定
+        // ドロップダウンを設定（Y軸は数値列のみ）
         const colXSel = document.getElementById("col-x");
         const colYSel = document.getElementById("col-y");
+        const numericCols = cols.filter(c => isNumericCol(rows, c));
         colXSel.innerHTML = cols.map(c => `<option value="${c}"${c === autoX ? " selected" : ""}>${c}</option>`).join("");
-        colYSel.innerHTML = cols.map(c => `<option value="${c}"${c === autoY ? " selected" : ""}>${c}</option>`).join("");
+        colYSel.innerHTML = numericCols.map(c => `<option value="${c}"${c === autoY ? " selected" : ""}>${c}</option>`).join("");
         document.getElementById("col-select-row").style.display = "";
 
         parsed = rows.map(d => {
