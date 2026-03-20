@@ -564,13 +564,13 @@ async function generateOgImage(svgEl, title, scoreLabel) {
 
 async function uploadOgImage(responseId, pngBlob) {
   const { error } = await quizSupabase.storage
-    .from("og-images")
+    .from("quiz-og-images")
     .upload(`${responseId}.png`, pngBlob, { contentType: "image/png", upsert: true });
   if (error) {
     console.warn("OG image upload failed:", error.message);
     return null;
   }
-  return `${SUPABASE_URL}/storage/v1/object/public/og-images/${responseId}.png`;
+  return `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/${responseId}.png`;
 }
 
 // --------------- 初期化 ---------------

@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   const scoreLabel = escapeHtml(response?.score_label || "結果");
   const ogTitle = `${title} — ${scoreLabel}`;
   const ogDesc = "折れ線グラフの予測結果をチェック！あなたも予測してみよう";
-  const ogImage = `${SUPABASE_URL}/storage/v1/object/public/og-images/${id}.png`;
+  const ogImage = `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/${id}.png`;
 
   const html = `<!DOCTYPE html>
 <html lang="ja">

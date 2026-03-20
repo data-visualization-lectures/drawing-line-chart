@@ -349,7 +349,7 @@ async function init() {
     document.title = quiz.title + " — 結果をみる";
 
     // Update OGP meta tags dynamically
-    const ogImageUrl = `${SUPABASE_URL}/storage/v1/object/public/og-images/${responseId}.png`;
+    const ogImageUrl = `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/${responseId}.png`;
     const sharePageUrl = `${DEPLOY_ORIGIN}/share.html?id=${responseId}`;
     const ogTitle = `${quiz.title} — ${response.score_label || "結果"}`;
     const ogDesc = "折れ線グラフの予測結果をチェック！あなたも予測してみよう";
