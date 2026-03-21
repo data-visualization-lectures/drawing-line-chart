@@ -142,9 +142,12 @@ body {
 
 /* Annotation form */
 .ydi-annotation-row { align-items: flex-end; }
+.ydi-annotation-row .ann-remove-wrap {
+  flex: 0 0 auto;
+}
 .ydi-annotation-row .ann-remove {
   background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #999;
-  padding: 0 6px; line-height: 1; height: 38px; flex-shrink: 0;
+  padding: 8px 12px; margin-bottom: 14px; display: block;
 }
 .ydi-annotation-row .ann-remove:hover { color: #c00; }
 #add-annotation {
@@ -2033,7 +2036,7 @@ function addAnnotationRow(startX, endX, label) {
     <div><label>開始</label><select class="ann-start">${options}</select></div>
     <div><label>終了</label><select class="ann-end">${optionsEnd}</select></div>
     <div><label>ラベル</label><input type="text" class="ann-label" placeholder="例: オバマ政権" value="${label || ""}"></div>
-    <button type="button" class="ann-remove">&times;</button>
+    <div class="ann-remove-wrap"><label>&nbsp;</label><button type="button" class="ann-remove">&times;</button></div>
   `;
   row.querySelectorAll("select, input").forEach(el => el.addEventListener("change", updatePreview));
   row.querySelector(".ann-label").addEventListener("input", updatePreview);
