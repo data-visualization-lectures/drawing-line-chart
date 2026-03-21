@@ -329,7 +329,7 @@ class ChartInstance {
     } else {
       g.append("circle").attr("cx", xScale(endPt.x)).attr("cy", yScale(endPt.y)).attr("r", 5).attr("fill", cfg.colors.actual);
     }
-    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(endPt.x) + 10)
+    this.actualEndLabelEl = g.append("text").attr("class", "ydi-value-label").attr("x", xScale(endPt.x) + 10)
       .attr("y", yScale(endPt.y)).attr("dy", "0.35em").attr("fill", cfg.colors.actual).text(yFmt(endPt.y) + cfg.unit);
 
     // Start & mid markers
@@ -403,8 +403,9 @@ class ChartInstance {
       // Legend
       // Resolve label overlaps (value labels + legend)
       const legendX = width + 12;
+      const chartHeight = this.height;
       const legendG = g.append("g").attr("class", "ydi-legend").style("opacity", 1)
-        .attr("transform", `translate(${legendX},0)`);
+        .attr("transform", `translate(${legendX},${chartHeight - 40})`);
       legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 0).attr("y2", 0)
         .attr("stroke", cfg.colors.user).attr("stroke-width", 3).attr("stroke-dasharray", "1 7").attr("stroke-linecap", "round");
       legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 0)
@@ -417,9 +418,9 @@ class ChartInstance {
       const actualEndY = yScale(endPt.y);
       const userEndY = yScale(lastPt.prediction);
       const labelItems = [
-        { y: actualEndY, height: 14, el: null, id: "actual" },
+        { y: actualEndY, height: 14, el: this.actualEndLabelEl, id: "actual" },
         { y: userEndY, height: 14, el: userLabelEl, id: "user" },
-        { y: 0, height: 40, legendG, legendX, id: "legend" },
+        { y: chartHeight - 40, height: 40, legendG, legendX, id: "legend" },
       ];
       resolveVerticalOverlaps(labelItems, 4);
     }

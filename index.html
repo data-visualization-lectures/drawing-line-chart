@@ -958,7 +958,7 @@ class ChartInstance {
     }
 
     // Actual end value label
-    actualG.append("text")
+    this.actualEndLabelEl = actualG.append("text")
       .attr("class", "ydi-value-label")
       .attr("x", xScale(endPt.x) + 10)
       .attr("y", yScale(endPt.y))
@@ -1210,7 +1210,7 @@ class ChartInstance {
 
     // Legend on the right side of the chart
     const legendX = width + 12;
-    const legendY = 0;
+    const legendY = this.height - 40;
     const legendG = this.g.append("g")
       .attr("class", "ydi-legend")
       .attr("transform", `translate(${legendX},${legendY})`);
@@ -1248,9 +1248,9 @@ class ChartInstance {
     const userEndY = yScale(userData[userData.length - 1].userY);
     const actualEndY = this.actualEndY;
     const labelItems = [
-      { y: actualEndY, height: 14, el: null, id: "actual" },
+      { y: actualEndY, height: 14, el: this.actualEndLabelEl, id: "actual" },
       { y: userEndY, height: 14, el: this.userValueSel, id: "user" },
-      { y: legendY, height: 40, legendG, legendX, id: "legend" },
+      { y: this.height - 40, height: 40, legendG, legendX, id: "legend" },
     ];
     resolveVerticalOverlaps(labelItems, 4);
     this.userValueSel.transition().duration(300).attr("y", labelItems.find(i => i.id === "user").y);
