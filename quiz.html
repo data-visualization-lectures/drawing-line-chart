@@ -428,10 +428,11 @@ class ChartInstance {
     this.userValueSel = g.append("text").attr("class", "ydi-value-label").attr("dy", "0.35em").attr("fill", cfg.colors.user).attr("opacity", 0);
 
     // Draw prompt
+    const promptCenterX = (xScale(drawStartX + xStep) + xScale(endX)) / 2;
     const promptG = g.append("text").attr("class", "ydi-draw-prompt")
-      .attr("x", xScale((drawStartX + endX) / 2)).attr("y", height / 3);
+      .attr("x", promptCenterX).attr("y", height / 3);
     cfg.drawPrompt.forEach((ln, i) => {
-      promptG.append("tspan").attr("x", xScale((drawStartX + endX) / 2)).attr("dy", i === 0 ? 0 : "1.4em").text(ln);
+      promptG.append("tspan").attr("x", promptCenterX).attr("dy", i === 0 ? 0 : "1.4em").text(ln);
     });
 
     // Drag rect
