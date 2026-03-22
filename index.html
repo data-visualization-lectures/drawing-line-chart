@@ -617,7 +617,23 @@ body {
       <div class="ydi-data-preview" id="data-preview-y"></div>
     </div>
 
-    <h2>2. クイズの設定</h2>
+    <h2>2. 対象期間</h2>
+    <div class="ydi-field-row" id="period-select-row" style="display:none">
+      <div>
+        <label for="period-start">開始</label>
+        <select id="period-start" disabled>
+          <option value="">データを先にアップロード</option>
+        </select>
+      </div>
+      <div>
+        <label for="period-end">終了</label>
+        <select id="period-end" disabled>
+          <option value="">データを先にアップロード</option>
+        </select>
+      </div>
+    </div>
+
+    <h2>3. クイズの設定</h2>
     <label for="quiz-title">タイトル（質問文）</label>
     <input type="text" id="quiz-title" placeholder="例: 日本の人口はどう推移した？">
 
@@ -645,7 +661,7 @@ body {
       <div></div>
     </div>
 
-    <h2>3. 期間アノテーション（任意）</h2>
+    <h2>4. 期間アノテーション（任意）</h2>
     <div id="annotations-list"></div>
     <button type="button" id="add-annotation">+ 期間を追加</button>
 
@@ -1970,23 +1986,51 @@ function onDataLoaded() {
   document.getElementById("data-preview-y").innerHTML = htmlY;
   dataPreview.style.display = "";
 
-  // Populate drawStartX dropdown (exclude first and last)
+  // Populate period select dropdowns
+  const periodStartSel = document.getElementById("period-start");
+  const periodEndSel = document.getElementById("period-end");
+  const allXValues = uploadedData.map(d => d.x);
+  periodStartSel.innerHTML = allXValues.map(x => `<option value="${x}">${x}</option>`).join("");
+  periodEndSel.innerHTML = allXValues.map(x => `<option value="${x}">${x}</option>`).join("");
+  periodStartSel.value = allXValues[0];
+  periodEndSel.value = allXValues[allXValues.length - 1];
+  periodStartSel.disabled = false;
+  periodEndSel.disabled = false;
+  document.getElementById("period-select-row").style.display = "";
+
+  populateDrawStart();
+  updatePreview();
+}
+
+// 対象期間に応じたデータをフィルタして返す
+function getFilteredData() {
+  if (!uploadedData) return null;
+  const startVal = parseFloat(document.getElementById("period-start").value);
+  const endVal = parseFloat(document.getElementById("period-end").value);
+  if (isNaN(startVal) || isNaN(endVal)) return uploadedData;
+  return uploadedData.filter(d => d.x >= startVal && d.x <= endVal);
+}
+
+// 対象期間が変わったらdrawStartXのドロップダウンを再設定
+function populateDrawStart() {
+  const filtered = getFilteredData();
+  if (!filtered || filtered.length < 2) return;
   drawStartSelect.innerHTML = "";
   drawStartSelect.disabled = false;
-  const xValues = uploadedData.map(d => d.x);
-  // Default: middle-ish point
+  const xValues = filtered.map(d => d.x);
   const midIdx = Math.floor(xValues.length / 2);
   xValues.forEach((x, i) => {
-    if (i === 0 || i === xValues.length - 1) return; // exclude first and last
+    if (i === 0 || i === xValues.length - 1) return;
     const opt = document.createElement("option");
     opt.value = x;
     opt.textContent = x;
     if (i === midIdx) opt.selected = true;
     drawStartSelect.appendChild(opt);
   });
-
-  updatePreview();
 }
+
+document.getElementById("period-start").addEventListener("change", () => { populateDrawStart(); updatePreview(); });
+document.getElementById("period-end").addEventListener("change", () => { populateDrawStart(); updatePreview(); });
 
 // --------------- フォーム: プレビュー更新 ---------------
 let previewDebounce = null;
@@ -2009,7 +2053,8 @@ function updatePreview() {
 }
 
 function buildConfig() {
-  if (!uploadedData || uploadedData.length < 3) return null;
+  const filtered = getFilteredData();
+  if (!filtered || filtered.length < 3) return null;
   const drawStartX = parseFloat(drawStartSelect.value);
   if (isNaN(drawStartX)) return null;
 
@@ -2026,7 +2071,7 @@ function buildConfig() {
   return {
     id: "preview",
     title: titleInput.value || "タイトル未設定",
-    data: uploadedData,
+    data: filtered,
     drawStartX: drawStartX,
     unit: unitInput.value || "",
     style: styleVal || undefined,
