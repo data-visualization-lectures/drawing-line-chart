@@ -33,7 +33,7 @@
 ## 前提条件
 
 - Supabase プロジェクトが作成済みであること
-- dataviz.jp の共通認証は `_temp/QUICKSTART.md` を参照
+- dataviz.jp の共通認証は `/QUICKSTART.md` を参照
 
 ## Step 1: Supabase テーブル作成
 
