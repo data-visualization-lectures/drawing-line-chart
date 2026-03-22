@@ -1870,10 +1870,21 @@ function isTimeSeriesCol(rows, col) {
 // YYYYMM → 小数年に変換（例: 201003 → 2010.167）
 function parseTimeValue(raw) {
   const s = String(raw).trim();
+  // YYYYMM (6桁数値)
   if (/^\d{6}$/.test(s)) {
     const y = parseInt(s.slice(0, 4));
     const m = parseInt(s.slice(4, 6));
     return y + (m - 1) / 12;
+  }
+  // YYYY/MM or YYYY-MM
+  const ymMatch = s.match(/^(\d{4})[\/\-](\d{1,2})$/);
+  if (ymMatch) {
+    return parseInt(ymMatch[1]) + (parseInt(ymMatch[2]) - 1) / 12;
+  }
+  // YYYY/MM/DD or YYYY-MM-DD → 年月に変換
+  const ymdMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-]\d{1,2}$/);
+  if (ymdMatch) {
+    return parseInt(ymdMatch[1]) + (parseInt(ymdMatch[2]) - 1) / 12;
   }
   let x = parseFloat(s);
   if (isNaN(x)) {
@@ -1896,8 +1907,11 @@ function formatXForDropdown(val) {
 // X軸のフォーマッタを決定（YYYYMM形式か年のみか）
 function detectXFormat(rows, col) {
   const sample = rows.slice(0, Math.min(10, rows.length));
-  const isYYYYMM = sample.filter(r => /^\d{6}$/.test(String(r[col]).trim())).length > sample.length * 0.5;
-  return isYYYYMM ? "yyyymm" : "year";
+  const hasMonthly = sample.filter(r => {
+    const v = String(r[col]).trim();
+    return /^\d{6}$/.test(v) || /^\d{4}[\/\-]\d{1,2}$/.test(v) || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(v);
+  }).length > sample.length * 0.5;
+  return hasMonthly ? "yyyymm" : "year";
 }
 // 数値列判定: 大半の行が数値に変換できる列
 function isNumericCol(rows, col) {
