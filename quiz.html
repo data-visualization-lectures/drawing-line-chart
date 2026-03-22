@@ -128,6 +128,17 @@ body {
 .ydi-chart-wrap.ydi-sketchy .ydi-legend-label { font-family: 'Patrick Hand', cursive; font-size: 13px; }
 .ydi-chart-wrap.ydi-sketchy .ydi-draw-prompt { font-family: 'Patrick Hand', cursive; }
 
+.site-links {
+  text-align: center;
+  margin-top: 32px;
+  padding: 16px 0;
+  font-size: 0.8rem;
+  color: #999;
+}
+.site-links a { color: #888; text-decoration: none; }
+.site-links a:hover { color: #555; text-decoration: underline; }
+.site-links span { margin: 0 6px; color: #ccc; }
+
 @media (max-width: 600px) {
   .quiz-app { padding: 20px 8px 12px; }
   .ydi-chart-wrap h2 { font-size: 1rem; }
@@ -142,6 +153,11 @@ body {
   <div class="quiz-loading" id="quiz-loading">読み込み中...</div>
   <div class="quiz-error" id="quiz-error" style="display:none"></div>
   <div id="quiz-container" style="display:none"></div>
+  <div class="site-links">
+    <a href="https://www.dataviz.jp/drawing-line-chart/">描いて答える折れ線グラフ</a>
+    <span>|</span>
+    <a href="https://www.dataviz.jp/">データの道具箱</a>
+  </div>
 </div>
 
 <script type="module">

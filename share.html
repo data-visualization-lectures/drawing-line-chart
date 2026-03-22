@@ -116,6 +116,17 @@ body {
 }
 .share-cta:hover { background: #555; }
 
+.site-links {
+  text-align: center;
+  margin-top: 32px;
+  padding: 16px 0;
+  font-size: 0.8rem;
+  color: #999;
+}
+.site-links a { color: #888; text-decoration: none; }
+.site-links a:hover { color: #555; text-decoration: underline; }
+.site-links span { margin: 0 6px; color: #ccc; }
+
 @media (max-width: 600px) {
   .share-app { padding: 20px 8px 12px; }
   .ydi-chart-wrap h2 { font-size: 1rem; }
@@ -130,6 +141,11 @@ body {
   <div class="share-error" id="share-error" style="display:none"></div>
   <div id="share-container" style="display:none"></div>
   <div id="share-result" class="share-result" style="display:none"></div>
+  <div class="site-links">
+    <a href="https://www.dataviz.jp/drawing-line-chart/">描いて答える折れ線グラフ</a>
+    <span>|</span>
+    <a href="https://www.dataviz.jp/">データの道具箱</a>
+  </div>
 </div>
 
 <script type="module">
