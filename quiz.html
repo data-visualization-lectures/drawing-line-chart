@@ -476,21 +476,23 @@ class ChartInstance {
     dragRect.call(drag);
     g.on("click", function(event) { self._handleDrag(event, this); });
 
-    // タッチデバイス対応: svgContainerにリスナーを登録（svgは再作成されるため）
+    // タッチデバイス対応
     if (!this._touchListenerAdded) {
       this._touchListenerAdded = true;
+      this.svgContainer.style.touchAction = "none";
       this.svgContainer.addEventListener("touchmove", (e) => {
-        if (self.state === "revealed") return;
+        if (self.state === "revealed" || !self.xScale || !self.yScale) return;
         e.preventDefault();
         const touch = e.touches[0];
         const svgEl = self.svgContainer.querySelector("svg");
-        if (!svgEl || !self.g) return;
-        const pt = svgEl.createSVGPoint();
-        pt.x = touch.clientX;
-        pt.y = touch.clientY;
-        const svgPt = pt.matrixTransform(self.g.node().getScreenCTM().inverse());
-        const xVal = clamp(self.cfg.drawStartX + self.xStep * 0.5, self.endX + self.xStep * 0.5, self.xScale.invert(svgPt.x));
-        const yVal = clamp(self.yScale.domain()[0], self.yScale.domain()[1], self.yScale.invert(svgPt.y));
+        if (!svgEl) return;
+        const rect = svgEl.getBoundingClientRect();
+        const svgW = parseFloat(svgEl.getAttribute("width"));
+        const svgH = parseFloat(svgEl.getAttribute("height"));
+        const localX = (touch.clientX - rect.left) * (svgW / rect.width) - self.margin.left;
+        const localY = (touch.clientY - rect.top) * (svgH / rect.height) - self.margin.top;
+        const xVal = clamp(self.cfg.drawStartX + self.xStep * 0.5, self.endX + self.xStep * 0.5, self.xScale.invert(localX));
+        const yVal = clamp(self.yScale.domain()[0], self.yScale.domain()[1], self.yScale.invert(localY));
         self._handleTouchDraw(xVal, yVal);
       }, { passive: false });
       this.svgContainer.addEventListener("touchstart", (e) => {
