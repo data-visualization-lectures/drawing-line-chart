@@ -1414,8 +1414,29 @@ async function generateThumbnail() {
   if (!svgEl) return null;
   try {
     const clone = svgEl.cloneNode(true);
-    // Inline computed styles for accurate rendering
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+    // 計算済みスタイルをインライン化（SVG→Canvas変換時にCSSクラスが効かないため）
+    const inlineStyles = (srcEl, cloneEl) => {
+      const computed = window.getComputedStyle(srcEl);
+      const important = ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linecap",
+        "stroke-linejoin", "opacity", "fill-opacity", "stroke-opacity", "font-family", "font-size",
+        "font-weight", "text-anchor", "display", "visibility"];
+      important.forEach(prop => {
+        const val = computed.getPropertyValue(prop);
+        if (val) cloneEl.style.setProperty(prop, val);
+      });
+      const srcChildren = srcEl.children;
+      const cloneChildren = cloneEl.children;
+      for (let i = 0; i < srcChildren.length; i++) {
+        if (cloneChildren[i]) inlineStyles(srcChildren[i], cloneChildren[i]);
+      }
+    };
+    inlineStyles(svgEl, clone);
+
+    // 不要な要素を除去（点滅エリア、ドラッグ領域、プロンプト）
+    clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
+
     const svgData = new XMLSerializer().serializeToString(clone);
     const canvas = document.createElement("canvas");
     const svgW = parseFloat(svgEl.getAttribute("width")) || 640;
