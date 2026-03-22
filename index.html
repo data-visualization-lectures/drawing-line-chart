@@ -2142,8 +2142,8 @@ document.getElementById("quiz-style").addEventListener("change", updatePreview);
 function addAnnotationRow(startX, endX, label) {
   if (!uploadedData || uploadedData.length === 0) return;
   const xValues = uploadedData.map(d => d.x);
-  const options = xValues.map(x => `<option value="${x}"${x === startX ? " selected" : ""}>${x}</option>`).join("");
-  const optionsEnd = xValues.map(x => `<option value="${x}"${x === endX ? " selected" : ""}>${x}</option>`).join("");
+  const options = xValues.map(x => `<option value="${x}"${x === startX ? " selected" : ""}>${formatXForDropdown(x)}</option>`).join("");
+  const optionsEnd = xValues.map(x => `<option value="${x}"${x === endX ? " selected" : ""}>${formatXForDropdown(x)}</option>`).join("");
   const list = document.getElementById("annotations-list");
   const row = document.createElement("div");
   row.className = "ydi-field-row ydi-annotation-row";
