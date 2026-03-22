@@ -1148,12 +1148,8 @@ class ChartInstance {
       .on("drag", function(event) { self._handleDrag(event, this); })
       .on("start", function(event) { self._handleDrag(event, this); });
 
-    // Desktop: attach to entire SVG for easier drawing; mobile: drag rect only
-    if (window.innerWidth > 600) {
-      g.call(drag).on("click", function(event) { self._handleDrag(event, this); });
-    } else {
-      dragRect.call(drag).on("click", function(event) { self._handleDrag(event, this); });
-    }
+    dragRect.call(drag);
+    g.on("click", function(event) { self._handleDrag(event, this); });
 
     // Store references
     this.yFmt = yFmt;

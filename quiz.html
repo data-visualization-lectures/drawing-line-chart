@@ -471,11 +471,8 @@ class ChartInstance {
     const drag = d3.drag()
       .on("drag", function(event) { self._handleDrag(event, this); })
       .on("start", function(event) { self._handleDrag(event, this); });
-    if (window.innerWidth > 600) {
-      g.call(drag).on("click", function(event) { self._handleDrag(event, this); });
-    } else {
-      dragRect.call(drag).on("click", function(event) { self._handleDrag(event, this); });
-    }
+    dragRect.call(drag);
+    g.on("click", function(event) { self._handleDrag(event, this); });
 
     // Annotation labels (on top of all elements)
     annLabels.forEach(a => {
