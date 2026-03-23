@@ -573,6 +573,7 @@ class ChartInstance {
 
     dragNode.addEventListener("pointerup", function() { active = false; });
     dragNode.addEventListener("pointercancel", function() { active = false; });
+    dragNode.addEventListener("lostpointercapture", function() { active = false; });
   }
 
   _reveal() {

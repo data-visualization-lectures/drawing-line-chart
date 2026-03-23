@@ -1187,9 +1187,9 @@ class ChartInstance {
     let mx, my;
     if (rawMx !== undefined) { mx = rawMx; my = rawMy; }
     else { [mx, my] = d3.pointer(event, this.g.node()); }
-    const drawStartX = cfg.drawStartX;
-    const endX = this.endX;
     const xStep = this.xStep;
+    const xVal = clamp(cfg.drawStartX + xStep * 0.5, this.endX + xStep * 0.5, xScale.invert(mx));
+    const yVal = clamp(yScale.domain()[0], yScale.domain()[1], yScale.invert(my));
 
     // Find last defined point for interpolation
     let lastDefinedIdx = 0;
@@ -1292,6 +1292,7 @@ class ChartInstance {
 
     dragNode.addEventListener("pointerup", function() { active = false; });
     dragNode.addEventListener("pointercancel", function() { active = false; });
+    dragNode.addEventListener("lostpointercapture", function() { active = false; });
   }
 
   _reveal() {
