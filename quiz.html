@@ -470,12 +470,8 @@ class ChartInstance {
       .attr("height", height);
 
     const self = this;
-    const drag = d3.drag()
-      .on("drag", function(event) { self._handleDrag(event, this); })
-      .on("start", function(event) { self._handleDrag(event, this); });
-    dragRect.call(drag);
-    g.on("click", function(event) { self._handleDrag(event, this); });
-    this._bindTouchHandlers();
+    this.dragRect = dragRect;
+    this._bindPointerHandlers();
 
     // Annotation labels (on top of all elements)
     annLabels.forEach(a => {
@@ -552,19 +548,31 @@ class ChartInstance {
     }
   }
 
-  _bindTouchHandlers() {
+  _bindPointerHandlers() {
     const self = this;
-    const svgNode = this.svg.node();
-    function onTouch(e) {
+    const dragNode = this.dragRect.node();
+    let active = false;
+
+    function onPointer(e) {
       if (self.state === "revealed") return;
       e.preventDefault();
-      const touch = e.touches[0];
-      if (!touch) return;
-      const rect = self.g.node().getBoundingClientRect();
-      self._handleDrag(null, null, touch.clientX - rect.left, touch.clientY - rect.top);
+      const [mx, my] = d3.pointer(e, self.g.node());
+      self._handleDrag(null, null, mx, my);
     }
-    svgNode.addEventListener("touchstart", onTouch, { passive: false });
-    svgNode.addEventListener("touchmove", onTouch, { passive: false });
+
+    dragNode.addEventListener("pointerdown", function(e) {
+      active = true;
+      dragNode.setPointerCapture(e.pointerId);
+      onPointer(e);
+    }, { passive: false });
+
+    dragNode.addEventListener("pointermove", function(e) {
+      if (!active) return;
+      onPointer(e);
+    }, { passive: false });
+
+    dragNode.addEventListener("pointerup", function() { active = false; });
+    dragNode.addEventListener("pointercancel", function() { active = false; });
   }
 
   _reveal() {
