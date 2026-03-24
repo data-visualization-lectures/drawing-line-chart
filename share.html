@@ -209,6 +209,10 @@ function downloadChartPng(svgEl, title) {
   };
   inlineStyles(svgEl, clone);
   clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
+  // ウェブフォントをSVGに埋め込み
+  const fontStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  fontStyle.textContent = "@import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');";
+  clone.insertBefore(fontStyle, clone.firstChild);
   const svgData = new XMLSerializer().serializeToString(clone);
   const svgW = parseFloat(svgEl.getAttribute("width")) || 640;
   const svgH = parseFloat(svgEl.getAttribute("height")) || 400;
