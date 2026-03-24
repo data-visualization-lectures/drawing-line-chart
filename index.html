@@ -2374,7 +2374,6 @@ function getAnnotationOptions(selectedVal) {
     for (let y = minX; y <= maxX; y++) {
       for (let m = 1; m <= 12; m++) {
         const val = +(y + (m - 1) / 12).toFixed(6);
-        if (val > filtered[filtered.length - 1].x + 0.001) break;
         values.push({ val, label: y + "/" + String(m).padStart(2, "0") });
       }
     }
