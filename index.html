@@ -20,6 +20,7 @@
 <!-- D3.js -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="d3.sketchy.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1622,76 +1623,11 @@ function renderCharts(configs) {
 }
 
 // --------------- サムネイル生成 ---------------
-// フォントをBase64で取得してキャッシュ
-let _fontFaceCSS = null;
-async function getFontFaceCSS() {
-  if (_fontFaceCSS) return _fontFaceCSS;
-  try {
-    const cssRes = await fetch("https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap");
-    const cssText = await cssRes.text();
-    const urlMatch = cssText.match(/url\((https:\/\/[^)]+\.woff2[^)]*)\)/);
-    if (!urlMatch) return "";
-    const fontRes = await fetch(urlMatch[1]);
-    const buf = await fontRes.arrayBuffer();
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    _fontFaceCSS = `@font-face { font-family: 'Klee One'; font-weight: 600; src: url(data:font/woff2;base64,${b64}) format('woff2'); }`;
-    return _fontFaceCSS;
-  } catch (e) { console.warn("Font embed failed:", e); return ""; }
-}
-
 async function generateThumbnail() {
-  const svgEl = document.querySelector(".ydi-chart-wrap svg");
-  if (!svgEl) return null;
+  const chartWrap = document.querySelector(".ydi-chart-wrap");
+  if (!chartWrap) return null;
   try {
-    const clone = svgEl.cloneNode(true);
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-
-    const inlineStyles = (srcEl, cloneEl) => {
-      const computed = window.getComputedStyle(srcEl);
-      const important = ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linecap",
-        "stroke-linejoin", "opacity", "fill-opacity", "stroke-opacity", "font-family", "font-size",
-        "font-weight", "text-anchor", "display", "visibility"];
-      important.forEach(prop => {
-        const val = computed.getPropertyValue(prop);
-        if (val) cloneEl.style.setProperty(prop, val);
-      });
-      const srcChildren = srcEl.children;
-      const cloneChildren = cloneEl.children;
-      for (let i = 0; i < srcChildren.length; i++) {
-        if (cloneChildren[i]) inlineStyles(srcChildren[i], cloneChildren[i]);
-      }
-    };
-    inlineStyles(svgEl, clone);
-
-    clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
-
-    // ウェブフォントをBase64でSVGに埋め込み
-    const fontCSS = await getFontFaceCSS();
-    if (fontCSS) {
-      const fontStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
-      fontStyle.textContent = fontCSS;
-      clone.insertBefore(fontStyle, clone.firstChild);
-    }
-
-    const svgData = new XMLSerializer().serializeToString(clone);
-    const canvas = document.createElement("canvas");
-    const svgW = parseFloat(svgEl.getAttribute("width")) || 640;
-    const svgH = parseFloat(svgEl.getAttribute("height")) || 400;
-    canvas.width = svgW * 2;
-    canvas.height = svgH * 2;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const img = new Image();
-    const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-      img.src = url;
-    });
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    URL.revokeObjectURL(url);
+    const canvas = await html2canvas(chartWrap, { scale: 2, backgroundColor: "#ffffff" });
     return canvas.toDataURL("image/png");
   } catch (e) {
     console.warn("Thumbnail generation failed:", e);
