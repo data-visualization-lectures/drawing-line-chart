@@ -261,15 +261,20 @@ class ChartInstance {
     wrap.innerHTML = `
       <h2>${cfg.title}</h2>
       <div class="ydi-svg-container"></div>
-      <div class="ydi-button-area">
-        <button class="ydi-button">${cfg.buttonText}</button>
-      </div>
-      <div class="ydi-after-reveal">${cfg.afterRevealHTML}</div>
     `;
     this.parentEl.appendChild(wrap);
+    // ボタンと結果表示をチャート枠の外側に配置
+    const buttonArea = document.createElement("div");
+    buttonArea.className = "ydi-button-area";
+    buttonArea.innerHTML = `<button class="ydi-button">${cfg.buttonText}</button>`;
+    this.parentEl.appendChild(buttonArea);
+    const afterReveal = document.createElement("div");
+    afterReveal.className = "ydi-after-reveal";
+    afterReveal.innerHTML = cfg.afterRevealHTML;
+    this.parentEl.appendChild(afterReveal);
     this.wrapEl = wrap;
     this.svgContainer = wrap.querySelector(".ydi-svg-container");
-    this.buttonEl = wrap.querySelector(".ydi-button");
+    this.buttonEl = this.parentEl.querySelector(".ydi-button");
     this.buttonEl.addEventListener("click", () => this._reveal());
   }
 
@@ -581,6 +586,7 @@ class ChartInstance {
     if (this.state !== "ready") return;
     this.state = "revealed";
     this.wrapEl.classList.add("ydi-guessed");
+    this.parentEl.classList.add("ydi-guessed");
 
     const { xScale, yScale, width, margin, cfg, userData } = this;
 
@@ -627,7 +633,7 @@ class ChartInstance {
     }));
     this.scoreResult = { totalError, avgRatio, label, cls };
 
-    const afterEl = this.wrapEl.querySelector(".ydi-after-reveal");
+    const afterEl = this.parentEl.querySelector(".ydi-after-reveal");
     afterEl.innerHTML = `<div class="ydi-score ${cls}">${label}</div>`;
 
     // Dispatch event
