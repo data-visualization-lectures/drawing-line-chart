@@ -28,7 +28,6 @@
 <!-- D3.js -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="d3.sketchy.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -191,17 +190,97 @@ function sketchyLinePath(points) {
   return d3.line().curve(d3.curveBasis)(result);
 }
 
+// SVGで使用中の文字に必要なフォントsubsetだけをBase64埋め込み
+let _fontCSSCache = null;
+let _fontBlocksCache = null;
+async function getFontCSS() {
+  if (!_fontCSSCache) {
+    const res = await fetch("https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap");
+    _fontCSSCache = await res.text();
+  }
+  return _fontCSSCache;
+}
+async function embedFontForChars(chars) {
+  const cssText = await getFontCSS();
+  if (!_fontBlocksCache) {
+    _fontBlocksCache = [];
+    const blocks = cssText.split(/(?=\/\*)/);
+    for (const block of blocks) {
+      const rangeMatch = block.match(/unicode-range:\s*([^;]+);/);
+      const urlMatch = block.match(/url\((https:\/\/[^)]+)\)/);
+      if (rangeMatch && urlMatch) {
+        const ranges = rangeMatch[1].split(",").map(s => s.trim());
+        _fontBlocksCache.push({ ranges, url: urlMatch[1], block });
+      }
+    }
+  }
+  const needed = _fontBlocksCache.filter(fb => {
+    return fb.ranges.some(range => {
+      const m = range.match(/U\+([0-9A-Fa-f]+)(?:-([0-9A-Fa-f]+))?/);
+      if (!m) return false;
+      const lo = parseInt(m[1], 16), hi = m[2] ? parseInt(m[2], 16) : lo;
+      return chars.some(c => { const cp = c.codePointAt(0); return cp >= lo && cp <= hi; });
+    });
+  });
+  let result = "";
+  for (const fb of needed) {
+    const res = await fetch(fb.url);
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    result += fb.block.replace(fb.url, "data:font/woff2;base64," + btoa(bin)) + "\n";
+  }
+  return result;
+}
+
 // チャート画像ダウンロード
-async function downloadChartPng(chartWrapEl, title) {
-  if (!chartWrapEl) return;
-  const hideEls = chartWrapEl.querySelectorAll(".ydi-after-reveal, .ydi-button");
-  hideEls.forEach(el => el.style.display = "none");
-  const canvas = await html2canvas(chartWrapEl, { scale: 2, backgroundColor: "#ffffff" });
-  hideEls.forEach(el => el.style.display = "");
-  const a = document.createElement("a");
-  a.download = (title || "chart") + ".png";
-  a.href = canvas.toDataURL("image/png");
-  a.click();
+async function downloadChartPng(svgEl, title) {
+  if (!svgEl) return;
+  const clone = svgEl.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  const inlineStyles = (srcEl, cloneEl) => {
+    const computed = window.getComputedStyle(srcEl);
+    ["fill","stroke","stroke-width","stroke-dasharray","stroke-linecap",
+     "stroke-linejoin","opacity","fill-opacity","stroke-opacity","font-family",
+     "font-size","font-weight","text-anchor","display","visibility"].forEach(prop => {
+      const val = computed.getPropertyValue(prop);
+      if (val) cloneEl.style.setProperty(prop, val);
+    });
+    for (let i = 0; i < srcEl.children.length; i++) {
+      if (cloneEl.children[i]) inlineStyles(srcEl.children[i], cloneEl.children[i]);
+    }
+  };
+  inlineStyles(svgEl, clone);
+  clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
+  const allText = clone.textContent || "";
+  const chars = [...new Set(allText.split(""))];
+  const fontCSS = await embedFontForChars(chars);
+  if (fontCSS) {
+    const styleEl = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    styleEl.textContent = fontCSS;
+    clone.insertBefore(styleEl, clone.firstChild);
+  }
+  const svgData = new XMLSerializer().serializeToString(clone);
+  const svgW = parseFloat(svgEl.getAttribute("width")) || 640;
+  const svgH = parseFloat(svgEl.getAttribute("height")) || 400;
+  const canvas = document.createElement("canvas");
+  canvas.width = svgW * 2;
+  canvas.height = svgH * 2;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const img = new Image();
+  const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  img.onload = () => {
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(url);
+    const a = document.createElement("a");
+    a.download = (title || "chart") + ".png";
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  };
+  img.src = url;
 }
 
 // 手書き風の丸を描画
@@ -577,7 +656,7 @@ async function init() {
     `;
 
     document.getElementById("download-png-btn").addEventListener("click", () => {
-      downloadChartPng(containerEl.querySelector(".ydi-chart-wrap"), quiz.title);
+      downloadChartPng(containerEl.querySelector("svg"), quiz.title);
     });
 
   } catch (e) {
