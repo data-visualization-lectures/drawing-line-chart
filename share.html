@@ -58,7 +58,7 @@ body {
 /* --- Chart styles --- */
 .ydi-chart-wrap { margin-bottom: 24px; position: relative; background: #fff; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .ydi-chart-wrap h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 12px; line-height: 1.4; text-align: center; }
-.ydi-chart-wrap svg { display: block; margin: 0 auto; overflow: visible; font: 300 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.ydi-chart-wrap svg { display: block; margin: 0 auto; overflow: visible; font: 600 13px/1.2 'Klee One', cursive; }
 .ydi-grid line { stroke: #e0e0e0; stroke-width: 1; shape-rendering: crispEdges; }
 .ydi-chart-wrap .axis path, .ydi-chart-wrap .axis line { stroke: #ccc; shape-rendering: crispEdges; }
 .ydi-chart-wrap .axis text { fill: #888; font-size: 12px; }
@@ -194,7 +194,10 @@ function sketchyLinePath(points) {
 // チャート画像ダウンロード
 async function downloadChartPng(chartWrapEl, title) {
   if (!chartWrapEl) return;
+  const hideEls = chartWrapEl.querySelectorAll(".ydi-after-reveal, .ydi-button");
+  hideEls.forEach(el => el.style.display = "none");
   const canvas = await html2canvas(chartWrapEl, { scale: 2, backgroundColor: "#ffffff" });
+  hideEls.forEach(el => el.style.display = "");
   const a = document.createElement("a");
   a.download = (title || "chart") + ".png";
   a.href = canvas.toDataURL("image/png");
