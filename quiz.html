@@ -642,11 +642,27 @@ class ChartInstance {
 const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --------------- チャート画像ダウンロード ---------------
-function downloadChartPng(svgEl, title) {
+// フォントをBase64で取得してキャッシュ
+let _fontFaceCSS = null;
+async function getFontFaceCSS() {
+  if (_fontFaceCSS) return _fontFaceCSS;
+  try {
+    const cssRes = await fetch("https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap");
+    const cssText = await cssRes.text();
+    const urlMatch = cssText.match(/url\((https:\/\/[^)]+\.woff2[^)]*)\)/);
+    if (!urlMatch) return "";
+    const fontRes = await fetch(urlMatch[1]);
+    const buf = await fontRes.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    _fontFaceCSS = `@font-face { font-family: 'Klee One'; font-weight: 600; src: url(data:font/woff2;base64,${b64}) format('woff2'); }`;
+    return _fontFaceCSS;
+  } catch (e) { console.warn("Font embed failed:", e); return ""; }
+}
+
+async function downloadChartPng(svgEl, title) {
   if (!svgEl) return;
   const clone = svgEl.cloneNode(true);
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  // 計算済みスタイルをインライン化
   const inlineStyles = (srcEl, cloneEl) => {
     const computed = window.getComputedStyle(srcEl);
     ["fill","stroke","stroke-width","stroke-dasharray","stroke-linecap",
@@ -661,10 +677,13 @@ function downloadChartPng(svgEl, title) {
   };
   inlineStyles(svgEl, clone);
   clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
-  // ウェブフォントをSVGに埋め込み
-  const fontStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
-  fontStyle.textContent = "@import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');";
-  clone.insertBefore(fontStyle, clone.firstChild);
+  // ウェブフォントをBase64でSVGに埋め込み
+  const fontCSS = await getFontFaceCSS();
+  if (fontCSS) {
+    const fontStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    fontStyle.textContent = fontCSS;
+    clone.insertBefore(fontStyle, clone.firstChild);
+  }
   const svgData = new XMLSerializer().serializeToString(clone);
   const svgW = parseFloat(svgEl.getAttribute("width")) || 640;
   const svgH = parseFloat(svgEl.getAttribute("height")) || 400;
@@ -717,10 +736,11 @@ async function generateOgImage(svgEl, title, scoreLabel) {
   bg.setAttribute("fill", "white");
   wrapper.appendChild(bg);
 
-  // インラインスタイル
+  // インラインスタイル（フォントBase64埋め込み）
+  const fontCSS = await getFontFaceCSS();
   const styleEl = document.createElementNS(ns, "style");
   styleEl.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
+    ${fontCSS}
     text { font-family: 'Klee One', cursive; }
     .ydi-grid line { stroke: #e0e0e0; stroke-width: 1; }
     .axis path, .axis line { stroke: #ccc; }

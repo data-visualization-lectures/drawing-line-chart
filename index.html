@@ -1622,6 +1622,23 @@ function renderCharts(configs) {
 }
 
 // --------------- サムネイル生成 ---------------
+// フォントをBase64で取得してキャッシュ
+let _fontFaceCSS = null;
+async function getFontFaceCSS() {
+  if (_fontFaceCSS) return _fontFaceCSS;
+  try {
+    const cssRes = await fetch("https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap");
+    const cssText = await cssRes.text();
+    const urlMatch = cssText.match(/url\((https:\/\/[^)]+\.woff2[^)]*)\)/);
+    if (!urlMatch) return "";
+    const fontRes = await fetch(urlMatch[1]);
+    const buf = await fontRes.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    _fontFaceCSS = `@font-face { font-family: 'Klee One'; font-weight: 600; src: url(data:font/woff2;base64,${b64}) format('woff2'); }`;
+    return _fontFaceCSS;
+  } catch (e) { console.warn("Font embed failed:", e); return ""; }
+}
+
 async function generateThumbnail() {
   const svgEl = document.querySelector(".ydi-chart-wrap svg");
   if (!svgEl) return null;
@@ -1629,7 +1646,6 @@ async function generateThumbnail() {
     const clone = svgEl.cloneNode(true);
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
 
-    // 計算済みスタイルをインライン化（SVG→Canvas変換時にCSSクラスが効かないため）
     const inlineStyles = (srcEl, cloneEl) => {
       const computed = window.getComputedStyle(srcEl);
       const important = ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linecap",
@@ -1647,13 +1663,15 @@ async function generateThumbnail() {
     };
     inlineStyles(svgEl, clone);
 
-    // 不要な要素を除去（点滅エリア、ドラッグ領域、プロンプト）
     clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
 
-    // ウェブフォントをSVGに埋め込み
-    const fontStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
-    fontStyle.textContent = "@import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');";
-    clone.insertBefore(fontStyle, clone.firstChild);
+    // ウェブフォントをBase64でSVGに埋め込み
+    const fontCSS = await getFontFaceCSS();
+    if (fontCSS) {
+      const fontStyle = document.createElementNS("http://www.w3.org/2000/svg", "style");
+      fontStyle.textContent = fontCSS;
+      clone.insertBefore(fontStyle, clone.firstChild);
+    }
 
     const svgData = new XMLSerializer().serializeToString(clone);
     const canvas = document.createElement("canvas");
