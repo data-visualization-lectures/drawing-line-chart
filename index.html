@@ -1731,6 +1731,7 @@ async function autoLoadFromURL() {
 function restoreFormFromConfig(cfg) {
   if (!cfg || !cfg.data) return;
   uploadedData = cfg.data;
+  if (cfg.xFormat) currentXFormat = cfg.xFormat;
   onDataLoaded();
   document.getElementById("quiz-title").value = cfg.title || "";
   document.getElementById("quiz-unit").value = cfg.unit || "";
