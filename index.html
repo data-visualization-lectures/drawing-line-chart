@@ -1744,7 +1744,17 @@ function restoreFormFromConfig(cfg) {
   if (cfg.drawStartX) {
     document.getElementById("quiz-draw-start").value = cfg.drawStartX;
   }
-  updatePreview();
+
+  // debounce経由の updatePreview → buildConfig 再構築ではなく、
+  // 保存されたcfgで直接チャートを描画する（フォーム→buildConfig 迂回の問題を回避）
+  clearTimeout(previewDebounce);
+  const placeholder = document.getElementById("preview-placeholder");
+  if (placeholder) placeholder.style.display = "none";
+  previewSection.style.display = "block";
+  previewContainer.innerHTML = "";
+  currentConfigs = [cfg];
+  new ChartInstance(previewContainer, cfg);
+
   // プロジェクト復元時は全ステップを開く
   openStep(1); openStep(2); openStep(3); openStep(4);
 }
