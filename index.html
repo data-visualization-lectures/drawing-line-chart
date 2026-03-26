@@ -2209,6 +2209,11 @@ function addAnnotationRow(startX, endX, label) {
     <div><label>終了</label><select class="ann-end">${optionsEnd}</select></div>
     <div class="ann-label-wrap"><label>ラベル</label><input type="text" class="ann-label" placeholder="例: 高市内閣" value="${label || ""}"><button type="button" class="ann-remove">&times;</button></div>
   `;
+  // innerHTML の selected 属性だけでは値が反映されない場合があるため、明示的に設定
+  const startSel = row.querySelector(".ann-start");
+  const endSel = row.querySelector(".ann-end");
+  if (startX !== undefined) startSel.value = startX;
+  if (endX !== undefined) endSel.value = endX;
   row.querySelectorAll("select, input").forEach(el => el.addEventListener("change", updatePreview));
   row.querySelector(".ann-label").addEventListener("input", updatePreview);
   list.appendChild(row);
