@@ -1661,6 +1661,12 @@ async function getAccessToken() {
   return session?.access_token || null;
 }
 
+async function getAuthUserId() {
+  if (!window.datavizSupabase) return null;
+  const { data: { session } } = await window.datavizSupabase.auth.getSession();
+  return session?.user?.id || null;
+}
+
 function getToolHeader() {
   return document.querySelector("dataviz-tool-header");
 }
@@ -1746,11 +1752,14 @@ async function publishQuiz() {
   cfg.title = confirmedTitle;
 
   try {
+    const createdBy = await getAuthUserId();
+
     const { data, error } = await quizSupabase
       .from("quiz_quizzes")
       .insert({
         title: cfg.title,
         chart_config: cfg,
+        created_by: createdBy,
       })
       .select("id")
       .single();
