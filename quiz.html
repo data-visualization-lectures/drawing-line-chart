@@ -107,6 +107,25 @@ body {
 .ydi-legend-label { font-size: 12px; font-weight: 600; }
 
 /* Share area */
+.dvz-cta {
+  text-align: center;
+  margin-top: 24px;
+}
+.dvz-cta a {
+  display: inline-block;
+  padding: 12px 32px;
+  min-height: 44px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: #333;
+  border: none;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+.dvz-cta a:hover { background: #555; }
+
 .dvz-share-area { margin-top: 12px; }
 .ydi-share-url {
   display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 8px;
@@ -166,6 +185,7 @@ body {
   .ydi-draw-prompt { font-size: 13px; }
   .ydi-value-label { font-size: 11px; }
   .ydi-chart-wrap.ydi-sketchy .ydi-value-label { font-size: 12px; }
+  .dvz-cta a { font-size: 0.9rem; padding: 10px 24px; }
 }
 
 /* ---- Embed mode ---- */
@@ -191,6 +211,9 @@ body {
   <div id="dvz-error" style="display:none"></div>
   <p class="dvz-lead" id="dvz-lead" style="display:none"></p>
   <div id="dvz-content" style="display:none"></div>
+  <div class="dvz-cta" id="dvz-cta" style="display:none">
+    <a href="https://www.dataviz.jp/drawing-line-chart/" target="_blank" rel="noopener" id="dvz-cta-link"></a>
+  </div>
   <div class="dvz-site-links">
     <a href="https://www.dataviz.jp/drawing-line-chart/" target="_blank" rel="noopener"></a>
     <span>|</span>
@@ -231,6 +254,7 @@ const TRANSLATIONS = {
     copyUrl: 'URLをコピー',
     copied: 'コピー済み',
     saveImage: '画像を保存',
+    cta: '自分のデータで作ってみる',
   },
   en: {
     loading: 'Loading...',
@@ -255,6 +279,7 @@ const TRANSLATIONS = {
     copyUrl: 'Copy URL',
     copied: 'Copied!',
     saveImage: 'Save image',
+    cta: 'Create with your own data',
   }
 };
 
@@ -304,6 +329,7 @@ if (IS_EMBED) {
 function initializeUI() {
   document.getElementById('dvz-loading').textContent = t('loading');
   document.getElementById('dvz-lead').textContent = t('lead');
+  document.getElementById('dvz-cta-link').textContent = t('cta');
   document.querySelector('.dvz-site-links a:first-child').textContent = t('toolName');
 }
 initializeUI();
@@ -1066,6 +1092,9 @@ async function init() {
     // Listen for reveal → save response
     containerEl.addEventListener("you-draw-it:revealed", async (e) => {
       const { exportData, totalError, avgRatio, label } = e.detail;
+
+      // CTAを表示
+      document.getElementById('dvz-cta').style.display = '';
 
       try {
         const { data: response, error: insertErr } = await quizSupabase
