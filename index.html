@@ -318,62 +318,83 @@ body {
   font-weight: 600;
 }
 
-/* --- Load modal --- */
-/* --- Save name dialog --- */
-.ydi-save-dialog {
+/* ============================================
+   公開フロー モーダル
+   ============================================ */
+.dvz-modal-overlay {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0, 0, 0, 0.4);
   z-index: 10000;
   justify-content: center;
   align-items: center;
 }
-.ydi-save-dialog.active { display: flex; }
-.ydi-save-dialog-inner {
+.dvz-modal-overlay.active {
+  display: flex;
+}
+.dvz-modal-inner {
   background: #fff;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 24px;
   width: 90%;
-  max-width: 400px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  text-align: center;
 }
-.ydi-save-dialog-inner h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
+.dvz-modal-inner h3 {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
 }
-.ydi-save-dialog-inner input {
+.dvz-modal-inner input[type="text"] {
   width: 100%;
   padding: 8px 12px;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   border: 1px solid #ccc;
-  border-radius: 4px;
+  border-radius: 6px;
   margin-bottom: 16px;
+  box-sizing: border-box;
 }
-.ydi-save-dialog-inner input:focus {
+.dvz-modal-inner input:focus {
   outline: none;
   border-color: #333;
 }
-.ydi-save-dialog-actions {
+.dvz-modal-actions {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
 }
-.ydi-save-dialog-actions button {
+.dvz-modal-actions button {
   padding: 8px 20px;
   font-size: 0.9rem;
   font-weight: 600;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   border: 1px solid #ccc;
+  background: #fff;
+  min-height: 44px;
+  transition: background 0.15s;
+}
+.dvz-modal-actions button:hover {
   background: #f0f0f0;
 }
-.ydi-save-dialog-actions button.primary {
+.dvz-modal-actions .dvz-btn-primary {
+  background: #e8f4e8;
+  border-color: #6a6;
+  color: #363;
+}
+.dvz-modal-actions .dvz-btn-primary:hover {
+  background: #d0e8d0;
+}
+.dvz-modal-actions .dvz-btn-dark {
   background: #333;
   color: #fff;
   border-color: #333;
 }
-.ydi-save-dialog-actions button.primary:hover { background: #555; }
+.dvz-modal-actions .dvz-btn-dark:hover {
+  background: #555;
+}
 
 /* --- Quiz creation form --- */
 .ydi-create {
@@ -765,15 +786,28 @@ body {
   </div>
 </div>
 
-<!-- 公開URLダイアログ -->
-<div class="ydi-save-dialog" id="publish-dialog">
-  <div class="ydi-save-dialog-inner">
-    <h3>クイズを公開しました</h3>
-    <p style="font-size:0.9rem;color:#666;margin-bottom:12px">以下のURLを共有すると、誰でもクイズに回答できます。</p>
-    <input type="text" id="publish-url-input" readonly style="background:#f8f8f8;cursor:text">
-    <div class="ydi-save-dialog-actions">
-      <button id="publish-close">閉じる</button>
-      <button class="primary" id="publish-copy">URLをコピー</button>
+<!-- タイトル入力モーダル -->
+<div class="dvz-modal-overlay" id="dvz-title-modal">
+  <div class="dvz-modal-inner">
+    <h3 id="dvz-title-modal-heading">タイトルを入力</h3>
+    <input type="text" id="dvz-title-input">
+    <div class="dvz-modal-actions" style="justify-content:flex-end">
+      <button id="dvz-title-cancel">キャンセル</button>
+      <button id="dvz-title-ok" class="dvz-btn-primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- シェアURLモーダル -->
+<div class="dvz-modal-overlay" id="dvz-share-modal">
+  <div class="dvz-modal-inner">
+    <h3 id="dvz-share-heading">クイズを公開しました</h3>
+    <p id="dvz-share-desc" style="font-size:0.9rem;color:#666;margin-bottom:12px">以下のURLを共有すると、誰でもクイズに回答できます。</p>
+    <input type="text" id="dvz-share-url" readonly style="background:#f8f8f8;cursor:text">
+    <div class="dvz-modal-actions">
+      <button id="dvz-share-copy" class="dvz-btn-primary">URLをコピー</button>
+      <button id="dvz-share-x" class="dvz-btn-dark">Xでシェア</button>
+      <button id="dvz-share-close">閉じる</button>
     </div>
   </div>
 </div>
@@ -1640,6 +1674,62 @@ function showMessage(msg, type = "info") {
   }
 }
 
+function showTitleModal(defaultTitle) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('dvz-title-modal');
+    const input = document.getElementById('dvz-title-input');
+    input.value = defaultTitle || '';
+    overlay.classList.add('active');
+    input.focus();
+    input.select();
+
+    function cleanup() {
+      overlay.classList.remove('active');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onOverlay);
+      input.removeEventListener('keydown', onKey);
+    }
+    function onOk() { cleanup(); resolve(input.value.trim() || null); }
+    function onCancel() { cleanup(); resolve(null); }
+    function onOverlay(e) { if (e.target === overlay) { cleanup(); resolve(null); } }
+    function onKey(e) { if (e.key === 'Enter') onOk(); else if (e.key === 'Escape') onCancel(); }
+
+    const okBtn = document.getElementById('dvz-title-ok');
+    const cancelBtn = document.getElementById('dvz-title-cancel');
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onOverlay);
+    input.addEventListener('keydown', onKey);
+  });
+}
+
+function showShareModal(shareUrl, title) {
+  const overlay = document.getElementById('dvz-share-modal');
+  const urlInput = document.getElementById('dvz-share-url');
+  urlInput.value = shareUrl;
+  overlay.classList.add('active');
+  urlInput.focus();
+  urlInput.select();
+
+  const close = () => overlay.classList.remove('active');
+
+  document.getElementById('dvz-share-copy').onclick = () => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      showMessage("URLをコピーしました", "success");
+    });
+  };
+
+  document.getElementById('dvz-share-x').onclick = () => {
+    const text = encodeURIComponent(title || '');
+    const url = encodeURIComponent(shareUrl);
+    window.open(`https://x.com/intent/tweet?text=${text}&url=${url}`, '_blank');
+  };
+
+  document.getElementById('dvz-share-close').onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+}
+
 // --------------- 公開機能 ---------------
 const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
 
@@ -1650,11 +1740,16 @@ async function publishQuiz() {
     return;
   }
 
+  // タイトル入力モーダルで確認
+  const confirmedTitle = await showTitleModal(cfg.title);
+  if (!confirmedTitle) return;
+  cfg.title = confirmedTitle;
+
   try {
     const { data, error } = await quizSupabase
       .from("quiz_quizzes")
       .insert({
-        title: cfg.title || "無題のクイズ",
+        title: cfg.title,
         chart_config: cfg,
       })
       .select("id")
@@ -1663,36 +1758,15 @@ async function publishQuiz() {
     if (error) throw error;
 
     const quizUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${data.id}`;
-    const dialog = document.getElementById("publish-dialog");
-    const urlInput = document.getElementById("publish-url-input");
-    urlInput.value = quizUrl;
-    dialog.classList.add("active");
-    urlInput.focus();
-    urlInput.select();
 
     showMessage("公開しました", "success");
+    showShareModal(quizUrl, cfg.title);
+
   } catch (e) {
     console.error("Publish failed:", e);
     showMessage("公開に失敗しました: " + e.message, "error");
   }
 }
-
-// Publish dialog event handlers
-document.getElementById("publish-close").addEventListener("click", () => {
-  document.getElementById("publish-dialog").classList.remove("active");
-});
-document.getElementById("publish-copy").addEventListener("click", () => {
-  const urlInput = document.getElementById("publish-url-input");
-  navigator.clipboard.writeText(urlInput.value).then(() => {
-    showMessage("URLをコピーしました", "success");
-    setTimeout(() => document.getElementById("publish-dialog").classList.remove("active"), 500);
-  });
-});
-document.getElementById("publish-dialog").addEventListener("click", (e) => {
-  if (e.target === e.currentTarget) {
-    e.currentTarget.classList.remove("active");
-  }
-});
 
 // --------------- ?project_id 自動読込 ---------------
 async function autoLoadFromURL() {
