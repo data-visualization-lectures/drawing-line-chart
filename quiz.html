@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +10,9 @@
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-WXY3CQ3RNF');
+  if (new URLSearchParams(location.search).get('embed') !== '1') {
+    gtag('config', 'G-WXY3CQ3RNF');
+  }
 </script>
 <!-- Supabase JS SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -29,21 +31,21 @@ body {
   line-height: 1.6;
 }
 
-.quiz-app {
+.dvz-app {
   max-width: 800px;
   margin: 0 auto;
   padding: 32px 16px 20px;
 }
 
 /* Loading / Error states */
-.quiz-loading, .quiz-error {
+#dvz-loading, #dvz-error {
   text-align: center;
   padding: 80px 20px;
   color: #999;
   font-size: 1rem;
 }
-.quiz-error { color: #c00; }
-.quiz-lead { text-align: center; color: #888; font-size: 0.85rem; margin-bottom: 8px; }
+#dvz-error { color: #c00; }
+.dvz-lead { text-align: center; color: #888; font-size: 0.85rem; margin-bottom: 8px; }
 
 /* --- Chart styles (same as index.html) --- */
 .ydi-chart-wrap {
@@ -105,7 +107,7 @@ body {
 .ydi-legend-label { font-size: 12px; font-weight: 600; }
 
 /* Share area */
-.ydi-share-area { margin-top: 12px; }
+.dvz-share-area { margin-top: 12px; }
 .ydi-share-url {
   display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 8px;
 }
@@ -132,36 +134,67 @@ body {
 .ydi-chart-wrap.ydi-sketchy .ydi-legend-label { font-family: 'Klee One', cursive; font-size: 13px; }
 .ydi-chart-wrap.ydi-sketchy .ydi-draw-prompt { font-family: 'Klee One', cursive; }
 
-.site-links {
+.dvz-site-links {
   text-align: center;
   margin-top: 32px;
   padding: 16px 0;
   font-size: 0.8rem;
   color: #999;
 }
-.site-links a { color: #888; text-decoration: none; }
-.site-links a:hover { color: #555; text-decoration: underline; }
-.site-links span { margin: 0 6px; color: #ccc; }
+.dvz-site-links a {
+  color: #888;
+  text-decoration: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.dvz-site-links a:hover { color: #555; text-decoration: underline; }
+.dvz-site-links span { margin: 0 6px; color: #ccc; }
 
-@media (max-width: 600px) {
-  .quiz-app { padding: 20px 8px 12px; }
+/* タブレット */
+@media (max-width: 768px) {
+  .dvz-app { padding: 24px 12px 16px; }
+  .ydi-chart-wrap h2 { font-size: 1.05rem; }
+  .ydi-chart-wrap.ydi-sketchy h2 { font-size: 1.2rem; }
+}
+
+/* スマートフォン */
+@media (max-width: 480px) {
+  .dvz-app { padding: 20px 8px 12px; }
   .ydi-chart-wrap h2 { font-size: 1rem; }
+  .ydi-chart-wrap.ydi-sketchy h2 { font-size: 1.1rem; }
   .ydi-draw-prompt { font-size: 13px; }
   .ydi-value-label { font-size: 11px; }
+  .ydi-chart-wrap.ydi-sketchy .ydi-value-label { font-size: 12px; }
+}
+
+/* ---- Embed mode ---- */
+.dvz-embed body {
+  background-color: transparent;
+  background-image: none;
+}
+.dvz-embed .dvz-site-links {
+  display: none;
+}
+.dvz-embed .dvz-app {
+  padding: 16px 12px;
+}
+.dvz-embed .dvz-share-area {
+  display: none;
 }
 </style>
 </head>
 <body>
 
-<div class="quiz-app" id="app">
-  <div class="quiz-loading" id="quiz-loading">読み込み中...</div>
-  <div class="quiz-error" id="quiz-error" style="display:none"></div>
-  <p class="quiz-lead" id="quiz-lead" style="display:none">タップで線を描いてください</p>
-  <div id="quiz-container" style="display:none"></div>
-  <div class="site-links">
-    <a href="https://www.dataviz.jp/drawing-line-chart/">描いて答える折れ線グラフ</a>
+<div class="dvz-app">
+  <div id="dvz-loading"></div>
+  <div id="dvz-error" style="display:none"></div>
+  <p class="dvz-lead" id="dvz-lead" style="display:none"></p>
+  <div id="dvz-content" style="display:none"></div>
+  <div class="dvz-site-links">
+    <a href="https://www.dataviz.jp/drawing-line-chart/" target="_blank" rel="noopener"></a>
     <span>|</span>
-    <a href="https://www.dataviz.jp/">データの道具箱</a>
+    <a href="https://www.dataviz.jp/" target="_blank" rel="noopener">dataviz.jp</a>
   </div>
 </div>
 
@@ -169,6 +202,111 @@ body {
 // ============================================================
 //  Quiz Page — 描いて答える折れ線グラフ
 // ============================================================
+
+// ---- i18n ----
+const LANG = navigator.language.startsWith('ja') ? 'ja' : 'en';
+document.documentElement.lang = LANG;
+
+const TRANSLATIONS = {
+  ja: {
+    loading: '読み込み中...',
+    noId: 'クイズIDが指定されていません',
+    notFound: 'クイズが見つかりませんでした',
+    error: 'エラーが発生しました',
+    timeout: '読み込みがタイムアウトしました。ページを再読み込みしてください。',
+    lead: 'タップで線を描いてください',
+    titleSuffix: '描いて答える折れ線グラフ',
+    toolName: '描いて答える折れ線グラフ',
+    buttonText: '答え合わせ',
+    drawPrompt: ['線を描いて', '予想してみよう'],
+    legendPrediction: 'あなたの予想',
+    legendActual: '実際のデータ',
+    scoreGood: 'ほぼ正解！',
+    scoreOk: '惜しい！',
+    scoreLow: '控えめな予想でした',
+    scoreHigh: '攻めた予想でした',
+    scoreOff: 'ずれていますね',
+    shareTitle: '結果をシェアしよう',
+    shareX: '𝕏 でシェア',
+    copyUrl: 'URLをコピー',
+    copied: 'コピー済み',
+    saveImage: '画像を保存',
+  },
+  en: {
+    loading: 'Loading...',
+    noId: 'No quiz ID provided',
+    notFound: 'Quiz not found',
+    error: 'An error occurred',
+    timeout: 'Loading timed out. Please reload the page.',
+    lead: 'Draw a line to make your prediction',
+    titleSuffix: 'Draw & Predict Line Chart',
+    toolName: 'Draw & Predict Line Chart',
+    buttonText: 'Check Answer',
+    drawPrompt: ['Draw a line', 'to predict'],
+    legendPrediction: 'Your prediction',
+    legendActual: 'Actual data',
+    scoreGood: 'Almost correct!',
+    scoreOk: 'So close!',
+    scoreLow: 'Conservative prediction',
+    scoreHigh: 'Bold prediction',
+    scoreOff: 'A bit off',
+    shareTitle: 'Share your results',
+    shareX: 'Share on 𝕏',
+    copyUrl: 'Copy URL',
+    copied: 'Copied!',
+    saveImage: 'Save image',
+  }
+};
+
+function t(key) {
+  return TRANSLATIONS[LANG]?.[key] ?? TRANSLATIONS.en[key] ?? key;
+}
+
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function setMeta(property, content) {
+  const el = document.querySelector(`meta[property="${property}"]`)
+          || document.querySelector(`meta[name="${property}"]`);
+  if (el) el.setAttribute('content', content);
+}
+
+// ---- Embed mode ----
+const IS_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+
+if (IS_EMBED) {
+  document.documentElement.classList.add('dvz-embed');
+
+  const postHeight = () => {
+    window.parent.postMessage(
+      { type: 'dvz-resize', height: document.documentElement.scrollHeight },
+      '*'
+    );
+  };
+  new ResizeObserver(postHeight).observe(document.body);
+  window.addEventListener('load', postHeight);
+
+  const retargetLinks = () => {
+    document.querySelectorAll('a[href]:not([target="_blank"])').forEach(a => {
+      if (!a.href.startsWith('javascript:')) {
+        a.target = '_blank';
+        a.rel = 'noopener';
+      }
+    });
+  };
+  retargetLinks();
+  new MutationObserver(retargetLinks).observe(document.body, { childList: true, subtree: true });
+}
+
+function initializeUI() {
+  document.getElementById('dvz-loading').textContent = t('loading');
+  document.getElementById('dvz-lead').textContent = t('lead');
+  document.querySelector('.dvz-site-links a:first-child').textContent = t('toolName');
+}
+initializeUI();
 
 const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
 
@@ -185,8 +323,8 @@ const DEFAULTS = {
   height: 300,
   margin: { top: 20, right: 130, bottom: 40, left: 55 },
   colors: { known: "#7570b3", actual: "#1b9e77", user: "#d95f02" },
-  buttonText: "答え合わせ",
-  drawPrompt: ["線を描いて", "予想してみよう"],
+  buttonText: t('buttonText'),
+  drawPrompt: t('drawPrompt'),
   afterRevealHTML: "",
 };
 
@@ -258,20 +396,29 @@ class ChartInstance {
     const wrap = document.createElement("div");
     wrap.className = "ydi-chart-wrap" + (cfg.style === "sketchy" ? " ydi-sketchy" : "");
     wrap.id = `ydi-${cfg.id}`;
-    wrap.innerHTML = `
-      <h2>${cfg.title}</h2>
-      <div class="ydi-svg-container"></div>
-    `;
+    const h2 = document.createElement("h2");
+    h2.textContent = cfg.title;
+    wrap.appendChild(h2);
+
+    const svgContainer = document.createElement("div");
+    svgContainer.className = "ydi-svg-container";
+    wrap.appendChild(svgContainer);
     this.parentEl.appendChild(wrap);
     // ボタン・結果表示はチャート枠の外
     const outerArea = document.createElement("div");
     outerArea.className = "ydi-outer-area";
-    outerArea.innerHTML = `
-      <div class="ydi-button-area">
-        <button class="ydi-button">${cfg.buttonText}</button>
-      </div>
-      <div class="ydi-after-reveal">${cfg.afterRevealHTML}</div>
-    `;
+    const buttonArea = document.createElement("div");
+    buttonArea.className = "ydi-button-area";
+    const button = document.createElement("button");
+    button.className = "ydi-button";
+    button.textContent = cfg.buttonText;
+    buttonArea.appendChild(button);
+    outerArea.appendChild(buttonArea);
+
+    const afterReveal = document.createElement("div");
+    afterReveal.className = "ydi-after-reveal";
+    if (cfg.afterRevealHTML) afterReveal.innerHTML = cfg.afterRevealHTML;
+    outerArea.appendChild(afterReveal);
     this.parentEl.appendChild(outerArea);
     this.wrapEl = wrap;
     this.outerArea = outerArea;
@@ -282,12 +429,14 @@ class ChartInstance {
 
   _render() {
     const { cfg } = this;
-    const isMobile = window.innerWidth < 600;
+    const isMobile = window.innerWidth < 480;
+    const isTablet = window.innerWidth < 768;
     this.svgContainer.innerHTML = "";
 
     const totalWidth = this.svgContainer.offsetWidth || 560;
     const margin = { ...cfg.margin };
     if (isMobile) { margin.right = 70; margin.left = 40; }
+    else if (isTablet) { margin.right = 90; margin.left = 45; }
     const width = totalWidth - margin.left - margin.right;
     const height = cfg.height;
 
@@ -307,7 +456,8 @@ class ChartInstance {
     const yScale = d3.scaleLinear().domain([yDomainMin, yDomainMax]).nice().range([height, 0]);
 
     const svg = d3.select(this.svgContainer).append("svg")
-      .attr("width", totalWidth).attr("height", height + margin.top + margin.bottom);
+      .attr("width", totalWidth).attr("height", height + margin.top + margin.bottom)
+      .attr("viewBox", `0 0 ${totalWidth} ${height + margin.top + margin.bottom}`);
     const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
     this.svg = svg; this.g = g; this.xScale = xScale; this.yScale = yScale;
@@ -601,11 +751,11 @@ class ChartInstance {
     legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 0).attr("y2", 0)
       .attr("stroke", cfg.colors.user).attr("stroke-width", 3).attr("stroke-dasharray", "1 7").attr("stroke-linecap", "round");
     legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 0)
-      .attr("dy", "0.35em").attr("fill", cfg.colors.user).text("あなたの予想");
+      .attr("dy", "0.35em").attr("fill", cfg.colors.user).text(t('legendPrediction'));
     legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 22).attr("y2", 22)
       .attr("stroke", cfg.colors.actual).attr("stroke-width", 3).attr("stroke-linecap", "round");
     legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 22)
-      .attr("dy", "0.35em").attr("fill", cfg.colors.actual).text("実際のデータ");
+      .attr("dy", "0.35em").attr("fill", cfg.colors.actual).text(t('legendActual'));
 
     // Resolve label overlaps (value labels + legend)
     const userEndY = yScale(userData[userData.length - 1].userY);
@@ -624,9 +774,9 @@ class ChartInstance {
     const totalError = d3.sum(scores, s => Math.abs(1 - s));
     const avgRatio = d3.mean(scores);
     let label, cls;
-    if (totalError < 0.5) { label = "ほぼ正解！"; cls = "ydi-score-good"; }
-    else if (totalError < 2) { label = "惜しい！"; cls = "ydi-score-ok"; }
-    else { label = avgRatio < 0.7 ? "控えめな予想でした" : avgRatio > 1.3 ? "攻めた予想でした" : "ずれていますね"; cls = "ydi-score-off"; }
+    if (totalError < 0.5) { label = t('scoreGood'); cls = "ydi-score-good"; }
+    else if (totalError < 2) { label = t('scoreOk'); cls = "ydi-score-ok"; }
+    else { label = avgRatio < 0.7 ? t('scoreLow') : avgRatio > 1.3 ? t('scoreHigh') : t('scoreOff'); cls = "ydi-score-off"; }
 
     // Export data
     this.exportData = userData.map(d => ({
@@ -636,7 +786,11 @@ class ChartInstance {
     this.scoreResult = { totalError, avgRatio, label, cls };
 
     const afterEl = this.outerArea.querySelector(".ydi-after-reveal");
-    afterEl.innerHTML = `<div class="ydi-score ${cls}">${label}</div>`;
+    afterEl.textContent = '';
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = `ydi-score ${cls}`;
+    scoreDiv.textContent = label;
+    afterEl.appendChild(scoreDiv);
 
     // Dispatch event
     this.wrapEl.dispatchEvent(new CustomEvent("you-draw-it:revealed", {
@@ -861,17 +1015,24 @@ async function uploadOgImage(responseId, pngBlob) {
 
 // --------------- 初期化 ---------------
 async function init() {
-  const loadingEl = document.getElementById("quiz-loading");
-  const errorEl = document.getElementById("quiz-error");
-  const containerEl = document.getElementById("quiz-container");
+  const loadingEl = document.getElementById("dvz-loading");
+  const errorEl = document.getElementById("dvz-error");
+  const containerEl = document.getElementById("dvz-content");
+
+  const timeout = setTimeout(() => {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = t('timeout');
+  }, 15000);
 
   const params = new URLSearchParams(window.location.search);
   const quizId = params.get("id");
 
   if (!quizId) {
+    clearTimeout(timeout);
     loadingEl.style.display = "none";
     errorEl.style.display = "block";
-    errorEl.textContent = "クイズIDが指定されていません";
+    errorEl.textContent = t('noId');
     return;
   }
 
@@ -883,17 +1044,19 @@ async function init() {
       .single();
 
     if (error || !quiz) {
+      clearTimeout(timeout);
       loadingEl.style.display = "none";
       errorEl.style.display = "block";
-      errorEl.textContent = "クイズが見つかりませんでした";
+      errorEl.textContent = t('notFound');
       return;
     }
 
     // Render chart
+    clearTimeout(timeout);
     loadingEl.style.display = "none";
     containerEl.style.display = "block";
-    document.getElementById("quiz-lead").style.display = "block";
-    document.title = quiz.title + " — 描いて答える折れ線グラフ";
+    document.getElementById("dvz-lead").style.display = "block";
+    document.title = quiz.title + " — " + t('titleSuffix');
 
     const cfg = { ...quiz.chart_config, id: quizId };
     if (!cfg.title) cfg.title = quiz.title;
@@ -925,26 +1088,50 @@ async function init() {
         const ogShareUrl = `${SUPABASE_URL}/functions/v1/og-share?id=${response.id}`;
 
         const afterEl = containerEl.querySelector(".ydi-after-reveal");
-        const existing = afterEl.innerHTML;
-        afterEl.innerHTML = existing + `
-          <div class="ydi-share-area">
-            <p style="margin-top:12px;font-weight:600">結果をシェアしよう</p>
-            <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-              <a class="ydi-share-btn" id="share-x-btn" href="https://x.com/intent/tweet?url=${encodeURIComponent(ogShareUrl)}&text=${encodeURIComponent(quiz.title + "　" + label)}" target="_blank" rel="noopener">𝕏 でシェア</a>
-              <button class="ydi-share-btn" id="share-copy-btn">URLをコピー</button>
-              <button class="ydi-share-btn" id="download-png-btn">画像を保存</button>
-            </div>
-          </div>
-        `;
 
-        document.getElementById("share-copy-btn").addEventListener("click", () => {
+        const shareArea = document.createElement('div');
+        shareArea.className = 'dvz-share-area';
+
+        const shareTitle = document.createElement('p');
+        shareTitle.style.cssText = 'margin-top:12px;font-weight:600';
+        shareTitle.textContent = t('shareTitle');
+        shareArea.appendChild(shareTitle);
+
+        const shareButtons = document.createElement('div');
+        shareButtons.style.cssText = 'margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap';
+
+        const xBtn = document.createElement('a');
+        xBtn.className = 'ydi-share-btn';
+        xBtn.id = 'share-x-btn';
+        xBtn.href = `https://x.com/intent/tweet?url=${encodeURIComponent(ogShareUrl)}&text=${encodeURIComponent(quiz.title + "　" + label)}`;
+        xBtn.target = '_blank';
+        xBtn.rel = 'noopener';
+        xBtn.textContent = t('shareX');
+        shareButtons.appendChild(xBtn);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'ydi-share-btn';
+        copyBtn.id = 'share-copy-btn';
+        copyBtn.textContent = t('copyUrl');
+        shareButtons.appendChild(copyBtn);
+
+        const dlBtn = document.createElement('button');
+        dlBtn.className = 'ydi-share-btn';
+        dlBtn.id = 'download-png-btn';
+        dlBtn.textContent = t('saveImage');
+        shareButtons.appendChild(dlBtn);
+
+        shareArea.appendChild(shareButtons);
+        afterEl.appendChild(shareArea);
+
+        copyBtn.addEventListener("click", () => {
           navigator.clipboard.writeText(ogShareUrl).then(() => {
-            document.getElementById("share-copy-btn").textContent = "コピー済み";
-            setTimeout(() => { document.getElementById("share-copy-btn").textContent = "URLをコピー"; }, 2000);
+            copyBtn.textContent = t('copied');
+            setTimeout(() => { copyBtn.textContent = t('copyUrl'); }, 2000);
           });
         });
 
-        document.getElementById("download-png-btn").addEventListener("click", () => {
+        dlBtn.addEventListener("click", () => {
           downloadChartPng(containerEl.querySelector("svg"), quiz.title);
         });
 
@@ -962,9 +1149,10 @@ async function init() {
     });
 
   } catch (e) {
+    clearTimeout(timeout);
     loadingEl.style.display = "none";
     errorEl.style.display = "block";
-    errorEl.textContent = "エラーが発生しました";
+    errorEl.textContent = t('error');
     console.error(e);
   }
 }

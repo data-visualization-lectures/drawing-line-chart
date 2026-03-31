@@ -1,27 +1,29 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>結果をみる — 描いて答える折れ線グラフ</title>
 <!-- OGP meta tags (defaults — updated dynamically via JS) -->
 <meta property="og:type" content="website">
-<meta property="og:title" content="描いて答える折れ線グラフ — 結果">
-<meta property="og:description" content="折れ線グラフの予想結果をチェック！あなたも予想してみよう">
-<meta property="og:site_name" content="描いて答える折れ線グラフ">
+<meta property="og:title" content="">
+<meta property="og:description" content="">
+<meta property="og:site_name" content="">
 <meta property="og:url" content="">
 <meta property="og:image" content="">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="描いて答える折れ線グラフ — 結果">
-<meta name="twitter:description" content="折れ線グラフの予想結果をチェック！あなたも予想してみよう">
+<meta name="twitter:title" content="">
+<meta name="twitter:description" content="">
 <meta name="twitter:image" content="">
-<!-- Google tag (gtag.js) -->
+<!-- Google tag (gtag.js) — embed時はPV抑制 -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-WXY3CQ3RNF"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-WXY3CQ3RNF');
+  if (new URLSearchParams(location.search).get('embed') !== '1') {
+    gtag('config', 'G-WXY3CQ3RNF');
+  }
 </script>
 <!-- Supabase JS SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -40,19 +42,25 @@ body {
   line-height: 1.6;
 }
 
-.share-app {
+.dvz-app {
   max-width: 800px;
   margin: 0 auto;
   padding: 32px 16px 20px;
 }
 
-.share-loading, .share-error {
+#dvz-loading {
   text-align: center;
   padding: 80px 20px;
   color: #999;
   font-size: 1rem;
 }
-.share-error { color: #c00; }
+
+#dvz-error {
+  text-align: center;
+  padding: 80px 20px;
+  color: #c00;
+  font-size: 1rem;
+}
 
 /* --- Chart styles --- */
 .ydi-chart-wrap { margin-bottom: 0; position: relative; background: #fff; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
@@ -85,7 +93,7 @@ body {
 .ydi-after-reveal { display: none; }
 
 /* Score + CTA */
-.share-result {
+.dvz-result {
   text-align: center;
   margin-top: 24px;
 }
@@ -101,10 +109,15 @@ body {
 .ydi-score-ok   { background: #fff3cd; color: #856404; }
 .ydi-score-off  { background: #f8d7da; color: #721c24; }
 
-.share-cta {
-  display: inline-block;
+.dvz-cta {
+  text-align: center;
   margin-top: 20px;
+}
+
+.dvz-cta a, .dvz-cta button {
+  display: inline-block;
   padding: 12px 32px;
+  min-height: 44px;
   font-size: 1rem;
   font-weight: 600;
   color: #fff;
@@ -113,38 +126,70 @@ body {
   border-radius: 4px;
   text-decoration: none;
   transition: background 0.2s;
+  cursor: pointer;
 }
-.share-cta:hover { background: #555; }
+.dvz-cta a:hover, .dvz-cta button:hover { background: #555; }
 
-.site-links {
+.dvz-site-links {
   text-align: center;
   margin-top: 32px;
   padding: 16px 0;
   font-size: 0.8rem;
   color: #999;
 }
-.site-links a { color: #888; text-decoration: none; }
-.site-links a:hover { color: #555; text-decoration: underline; }
-.site-links span { margin: 0 6px; color: #ccc; }
+.dvz-site-links a {
+  color: #888;
+  text-decoration: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.dvz-site-links a:hover { color: #555; text-decoration: underline; }
+.dvz-site-links span { margin: 0 6px; color: #ccc; }
 
-@media (max-width: 600px) {
-  .share-app { padding: 20px 8px 12px; }
+/* ---- Embed mode ---- */
+.dvz-embed body {
+  background-color: transparent;
+  background-image: none;
+}
+.dvz-embed .dvz-site-links {
+  display: none;
+}
+.dvz-embed .dvz-app {
+  padding: 16px 12px;
+}
+
+/* ---- レスポンシブ ---- */
+
+/* タブレット */
+@media (max-width: 768px) {
+  .dvz-app { padding: 24px 12px 16px; }
+  .ydi-chart-wrap h2 { font-size: 1.05rem; }
+  .ydi-chart-wrap.ydi-sketchy h2 { font-size: 1.2rem; }
+}
+
+/* スマートフォン */
+@media (max-width: 480px) {
+  .dvz-app { padding: 20px 8px 12px; }
   .ydi-chart-wrap h2 { font-size: 1rem; }
+  .ydi-chart-wrap.ydi-sketchy h2 { font-size: 1.1rem; }
   .ydi-value-label { font-size: 11px; }
+  .ydi-chart-wrap.ydi-sketchy .ydi-value-label { font-size: 12px; }
+  .dvz-cta a, .dvz-cta button { font-size: 0.9rem; padding: 10px 24px; }
 }
 </style>
 </head>
 <body>
 
-<div class="share-app" id="app">
-  <div class="share-loading" id="share-loading">読み込み中...</div>
-  <div class="share-error" id="share-error" style="display:none"></div>
-  <div id="share-container" style="display:none"></div>
-  <div id="share-result" class="share-result" style="display:none"></div>
-  <div class="site-links">
-    <a href="https://www.dataviz.jp/drawing-line-chart/">描いて答える折れ線グラフ</a>
+<div class="dvz-app">
+  <div id="dvz-loading"></div>
+  <div id="dvz-error" style="display:none"></div>
+  <div id="dvz-content" style="display:none"></div>
+  <div id="dvz-result" class="dvz-result" style="display:none"></div>
+  <div class="dvz-site-links">
+    <a href="https://www.dataviz.jp/drawing-line-chart/" target="_blank" rel="noopener"></a>
     <span>|</span>
-    <a href="https://www.dataviz.jp/">データの道具箱</a>
+    <a href="https://www.dataviz.jp/" target="_blank" rel="noopener">dataviz.jp</a>
   </div>
 </div>
 
@@ -153,13 +198,106 @@ body {
 //  Share Page — 描いて答える折れ線グラフ（静的表示）
 // ============================================================
 
-const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
+// ---- i18n ----
+const LANG = navigator.language.startsWith('ja') ? 'ja' : 'en';
+document.documentElement.lang = LANG;
 
-// --------------- Quiz用Supabaseクライアント ---------------
+const TRANSLATIONS = {
+  ja: {
+    loading: '読み込み中...',
+    noId: '回答IDが指定されていません',
+    notFound: '回答データが見つかりませんでした',
+    error: 'エラーが発生しました',
+    timeout: '読み込みがタイムアウトしました。ページを再読み込みしてください。',
+    resultSuffix: '結果をみる',
+    ogDesc: '折れ線グラフの予想結果をチェック！あなたも予想してみよう',
+    ogSiteName: '描いて答える折れ線グラフ',
+    answered: '回答済み',
+    trySelf: '自分もやってみる',
+    saveImage: '画像を保存',
+    legendPrediction: '予想',
+    legendActual: '実際',
+    resultLabel: '結果',
+    toolName: '描いて答える折れ線グラフ',
+  },
+  en: {
+    loading: 'Loading...',
+    noId: 'No response ID provided',
+    notFound: 'Response data not found',
+    error: 'An error occurred',
+    timeout: 'Loading timed out. Please reload the page.',
+    resultSuffix: 'Results',
+    ogDesc: 'Check out these line chart prediction results! Try it yourself.',
+    ogSiteName: 'Draw & Predict Line Chart',
+    answered: 'Answered',
+    trySelf: 'Try it yourself',
+    saveImage: 'Save image',
+    legendPrediction: 'Prediction',
+    legendActual: 'Actual',
+    resultLabel: 'Result',
+    toolName: 'Draw & Predict Line Chart',
+  }
+};
+
+function t(key) {
+  return TRANSLATIONS[LANG]?.[key] ?? TRANSLATIONS.en[key] ?? key;
+}
+
+// ---- ユーティリティ ----
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function setMeta(property, content) {
+  const el = document.querySelector(`meta[property="${property}"]`)
+          || document.querySelector(`meta[name="${property}"]`);
+  if (el) el.setAttribute('content', content);
+}
+
+// ---- Embed mode ----
+const IS_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+
+if (IS_EMBED) {
+  document.documentElement.classList.add('dvz-embed');
+
+  const postHeight = () => {
+    window.parent.postMessage(
+      { type: 'dvz-resize', height: document.documentElement.scrollHeight },
+      '*'
+    );
+  };
+  new ResizeObserver(postHeight).observe(document.body);
+  window.addEventListener('load', postHeight);
+
+  const retargetLinks = () => {
+    document.querySelectorAll('a[href]:not([target="_blank"])').forEach(a => {
+      if (!a.href.startsWith('javascript:')) {
+        a.target = '_blank';
+        a.rel = 'noopener';
+      }
+    });
+  };
+  retargetLinks();
+  new MutationObserver(retargetLinks).observe(document.body, { childList: true, subtree: true });
+}
+
+// ---- UI初期化 ----
+function initializeUI() {
+  document.getElementById('dvz-loading').textContent = t('loading');
+  document.querySelector('.dvz-site-links a:first-child').textContent = t('toolName');
+}
+
+initializeUI();
+
+// ---- Supabase ----
+const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
 const SUPABASE_URL = "https://vebhoeiltxspsurqoxvl.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlYmhvZWlsdHhzcHN1cnFveHZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUwNTY4MjMsImV4cCI6MjA4MDYzMjgyM30.5uf-D07Hb0JxL39X9yQ20P-5gFc1CRMdKWhDySrNZ0E";
 const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ---- チャート設定 ----
 const DEFAULTS = {
   unit: "", yFormat: ",.0f", precision: 0, yExtent: 1.5, height: 300,
   margin: { top: 20, right: 130, bottom: 40, left: 55 },
@@ -171,7 +309,6 @@ const DEFAULTS = {
 
 function clamp(min, max, val) { return Math.max(min, Math.min(max, val)); }
 
-// 手書き風ライン: データポイント間にjitterを加えてcurveBasisで補間
 function sketchyLinePath(points) {
   const result = [];
   for (let i = 0; i < points.length - 1; i++) {
@@ -190,7 +327,6 @@ function sketchyLinePath(points) {
   return d3.line().curve(d3.curveBasis)(result);
 }
 
-// SVGで使用中の文字に必要なフォントsubsetだけをBase64埋め込み
 let _fontCSSCache = null;
 let _fontBlocksCache = null;
 async function getFontCSS() {
@@ -233,7 +369,6 @@ async function embedFontForChars(chars) {
   return result;
 }
 
-// チャート画像ダウンロード
 async function downloadChartPng(svgEl, title) {
   if (!svgEl) return;
   const clone = svgEl.cloneNode(true);
@@ -283,7 +418,6 @@ async function downloadChartPng(svgEl, title) {
   img.src = url;
 }
 
-// 手書き風の丸を描画
 function drawSketchyCircle(parent, cx, cy, r, fillColor) {
   const dot = d3.sketchy.circle();
   dot.radius(r).cx(cx).cy(cy).fill(fillColor).stroke(fillColor).strokeWidth(6);
@@ -309,7 +443,7 @@ function mergeConfig(cfg) {
   return { ...DEFAULTS, ...cfg, margin: { ...DEFAULTS.margin, ...(cfg.margin || {}) }, colors: { ...DEFAULTS.colors, ...(cfg.colors || {}) } };
 }
 
-// --------------- ChartInstance (静的表示版) ---------------
+// ---- ChartInstance (静的表示版) ----
 class ChartInstance {
   constructor(parentEl, rawConfig) {
     this.cfg = mergeConfig(rawConfig);
@@ -323,15 +457,26 @@ class ChartInstance {
     const wrap = document.createElement("div");
     wrap.className = "ydi-chart-wrap" + (cfg.style === "sketchy" ? " ydi-sketchy" : "");
     wrap.id = `ydi-${cfg.id}`;
-    wrap.innerHTML = `
-      <h2>${cfg.title}</h2>
-      <div class="ydi-svg-container"></div>
-      <div class="ydi-button-area"></div>
-      <div class="ydi-after-reveal"></div>
-    `;
+
+    const h2 = document.createElement("h2");
+    h2.textContent = cfg.title;
+    wrap.appendChild(h2);
+
+    const svgContainer = document.createElement("div");
+    svgContainer.className = "ydi-svg-container";
+    wrap.appendChild(svgContainer);
+
+    const buttonArea = document.createElement("div");
+    buttonArea.className = "ydi-button-area";
+    wrap.appendChild(buttonArea);
+
+    const afterReveal = document.createElement("div");
+    afterReveal.className = "ydi-after-reveal";
+    wrap.appendChild(afterReveal);
+
     this.parentEl.appendChild(wrap);
     this.wrapEl = wrap;
-    this.svgContainer = wrap.querySelector(".ydi-svg-container");
+    this.svgContainer = svgContainer;
 
     this._predictionData = null;
     this._ro = new ResizeObserver(() => {
@@ -343,12 +488,14 @@ class ChartInstance {
 
   _render() {
     const { cfg } = this;
-    const isMobile = window.innerWidth < 600;
+    const isMobile = window.innerWidth < 480;
+    const isTablet = window.innerWidth < 768;
     this.svgContainer.innerHTML = "";
 
     const totalWidth = this.svgContainer.offsetWidth || 560;
     const margin = { ...cfg.margin };
     if (isMobile) { margin.right = 70; margin.left = 40; }
+    else if (isTablet) { margin.right = 90; margin.left = 45; }
     const width = totalWidth - margin.left - margin.right;
     const height = cfg.height;
 
@@ -368,7 +515,9 @@ class ChartInstance {
     const yScale = d3.scaleLinear().domain([yDomainMin, yDomainMax]).nice().range([height, 0]);
 
     const svg = d3.select(this.svgContainer).append("svg")
-      .attr("width", totalWidth).attr("height", height + margin.top + margin.bottom);
+      .attr("width", totalWidth)
+      .attr("height", height + margin.top + margin.bottom)
+      .attr("viewBox", `0 0 ${totalWidth} ${height + margin.top + margin.bottom}`);
     const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
     this.svg = svg; this.g = g; this.xScale = xScale; this.yScale = yScale;
@@ -381,7 +530,7 @@ class ChartInstance {
     gridG.selectAll("line.h").data(yScale.ticks(5)).join("line")
       .attr("x1", 0).attr("x2", width).attr("y1", d => yScale(d)).attr("y2", d => yScale(d));
 
-    // Annotation backgrounds (behind data lines)
+    // Annotation backgrounds
     const annLabels = [];
     if (cfg.annotations && cfg.annotations.length > 0) {
       const annG = g.append("g").attr("class", "ydi-annotations");
@@ -449,7 +598,7 @@ class ChartInstance {
       g.append("path").attr("class", "ydi-known-line").attr("d", line(knownData)).attr("stroke", cfg.colors.known);
     }
 
-    // Actual line (fully visible — no clipPath)
+    // Actual line (fully visible)
     const actualData = data.filter(d => d.x >= drawStartX);
     if (sketchy) {
       const aPts = toPoints(actualData);
@@ -494,7 +643,7 @@ class ChartInstance {
       .attr("y", yScale(midPt.y) + midLabelDy).attr("text-anchor", "end").attr("fill", cfg.colors.known)
       .text(yFmt(midPt.y) + cfg.unit);
 
-    // Annotation labels (on top of all elements)
+    // Annotation labels
     annLabels.forEach(a => {
       g.append("text").attr("class", "ydi-annotation-label")
         .attr("x", a.x).attr("y", 12)
@@ -503,7 +652,6 @@ class ChartInstance {
         .text(a.label);
     });
 
-    // Store for renderPrediction
     this.yFmt = yFmt;
     this.data = data;
     this.drawStartX = drawStartX;
@@ -514,7 +662,6 @@ class ChartInstance {
     this._predictionData = predictionData;
     const { xScale, yScale, g, cfg, width } = this;
 
-    // Draw user prediction line
     const sketchy = cfg.style === "sketchy";
     const validPts = predictionData.filter(d => d.prediction != null);
     if (sketchy) {
@@ -532,7 +679,6 @@ class ChartInstance {
       g.append("path").attr("class", "ydi-user-line").attr("d", userLine(predictionData)).attr("stroke", cfg.colors.user);
     }
 
-    // User endpoint
     const lastPt = predictionData[predictionData.length - 1];
     if (lastPt) {
       if (sketchy) {
@@ -551,7 +697,6 @@ class ChartInstance {
         .text(displayVal + cfg.unit);
 
       // Legend
-      // Resolve label overlaps (value labels + legend)
       const legendX = width + 12;
       const chartHeight = this.height;
       const legendG = g.append("g").attr("class", "ydi-legend").style("opacity", 1)
@@ -559,11 +704,11 @@ class ChartInstance {
       legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 0).attr("y2", 0)
         .attr("stroke", cfg.colors.user).attr("stroke-width", 3).attr("stroke-dasharray", "1 7").attr("stroke-linecap", "round");
       legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 0)
-        .attr("dy", "0.35em").attr("fill", cfg.colors.user).text("予想");
+        .attr("dy", "0.35em").attr("fill", cfg.colors.user).text(t('legendPrediction'));
       legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 22).attr("y2", 22)
         .attr("stroke", cfg.colors.actual).attr("stroke-width", 3).attr("stroke-linecap", "round");
       legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 22)
-        .attr("dy", "0.35em").attr("fill", cfg.colors.actual).text("実際");
+        .attr("dy", "0.35em").attr("fill", cfg.colors.actual).text(t('legendActual'));
 
       const actualEndY = yScale(endPt.y);
       const userEndY = yScale(lastPt.prediction);
@@ -578,20 +723,28 @@ class ChartInstance {
 }
 
 
-// --------------- 初期化 ---------------
+// ---- 初期化 ----
 async function init() {
-  const loadingEl = document.getElementById("share-loading");
-  const errorEl = document.getElementById("share-error");
-  const containerEl = document.getElementById("share-container");
-  const resultEl = document.getElementById("share-result");
+  const loadingEl = document.getElementById("dvz-loading");
+  const errorEl = document.getElementById("dvz-error");
+  const contentEl = document.getElementById("dvz-content");
+  const resultEl = document.getElementById("dvz-result");
+
+  // タイムアウト (15秒)
+  const timeout = setTimeout(() => {
+    loadingEl.style.display = "none";
+    errorEl.style.display = "block";
+    errorEl.textContent = t('timeout');
+  }, 15000);
 
   const params = new URLSearchParams(window.location.search);
   const responseId = params.get("id");
 
   if (!responseId) {
+    clearTimeout(timeout);
     loadingEl.style.display = "none";
     errorEl.style.display = "block";
-    errorEl.textContent = "回答IDが指定されていません";
+    errorEl.textContent = t('noId');
     return;
   }
 
@@ -603,66 +756,79 @@ async function init() {
       .single();
 
     if (error || !response || !response.quiz_quizzes) {
+      clearTimeout(timeout);
       loadingEl.style.display = "none";
       errorEl.style.display = "block";
-      errorEl.textContent = "回答データが見つかりませんでした";
+      errorEl.textContent = t('notFound');
       return;
     }
+
+    clearTimeout(timeout);
 
     const quiz = response.quiz_quizzes;
     const cfg = { ...quiz.chart_config, id: responseId };
     if (!cfg.title) cfg.title = quiz.title;
 
-    document.title = quiz.title + " — 結果をみる";
+    document.title = quiz.title + " — " + t('resultSuffix');
 
-    // Update OGP meta tags dynamically
+    // Update OGP meta tags
     const ogImageUrl = `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/${responseId}.png`;
     const sharePageUrl = `${DEPLOY_ORIGIN}/share.html?id=${responseId}`;
-    const ogTitle = `${quiz.title} — ${response.score_label || "結果"}`;
-    const ogDesc = "折れ線グラフの予想結果をチェック！あなたも予想してみよう";
+    const ogTitle = `${quiz.title} — ${response.score_label || t('resultLabel')}`;
 
-    const setMeta = (attr, value, content) => {
-      const el = document.querySelector(`meta[${attr}="${value}"]`);
-      if (el) el.setAttribute("content", content);
-    };
-    setMeta("property", "og:title", ogTitle);
-    setMeta("property", "og:description", ogDesc);
-    setMeta("property", "og:url", sharePageUrl);
-    setMeta("property", "og:image", ogImageUrl);
-    setMeta("name", "twitter:title", ogTitle);
-    setMeta("name", "twitter:description", ogDesc);
-    setMeta("name", "twitter:image", ogImageUrl);
+    setMeta("og:title", ogTitle);
+    setMeta("og:description", t('ogDesc'));
+    setMeta("og:site_name", t('ogSiteName'));
+    setMeta("og:url", sharePageUrl);
+    setMeta("og:image", ogImageUrl);
+    setMeta("twitter:title", ogTitle);
+    setMeta("twitter:description", t('ogDesc'));
+    setMeta("twitter:image", ogImageUrl);
 
     // Render chart
     loadingEl.style.display = "none";
-    containerEl.style.display = "block";
+    contentEl.style.display = "block";
     resultEl.style.display = "block";
 
-    const chart = new ChartInstance(containerEl, cfg);
+    const chart = new ChartInstance(contentEl, cfg);
     chart.renderPrediction(response.prediction_data);
 
-    // Score badge + CTA
+    // Score badge + CTA (XSS-safe: textContent for user data)
     let cls = "ydi-score-ok";
     if (response.total_error < 0.5) cls = "ydi-score-good";
     else if (response.total_error >= 2) cls = "ydi-score-off";
 
-    const quizUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${quiz.id}`;
-    resultEl.innerHTML = `
-      <div class="ydi-score ${cls}">${response.score_label || "回答済み"}</div>
-      <div style="margin-top:20px">
-        <a class="share-cta" href="${quizUrl}">自分もやってみる</a>
-        <button class="share-cta" id="download-png-btn" style="background:#666;margin-left:8px;cursor:pointer">画像を保存</button>
-      </div>
-    `;
+    const scoreEl = document.createElement("div");
+    scoreEl.className = `ydi-score ${cls}`;
+    scoreEl.textContent = response.score_label || t('answered');
+    resultEl.appendChild(scoreEl);
 
-    document.getElementById("download-png-btn").addEventListener("click", () => {
-      downloadChartPng(containerEl.querySelector("svg"), quiz.title);
+    const ctaDiv = document.createElement("div");
+    ctaDiv.className = "dvz-cta";
+
+    const quizUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${quiz.id}`;
+    const ctaLink = document.createElement("a");
+    ctaLink.href = quizUrl;
+    ctaLink.textContent = t('trySelf');
+    ctaDiv.appendChild(ctaLink);
+
+    const downloadBtn = document.createElement("button");
+    downloadBtn.textContent = t('saveImage');
+    downloadBtn.style.background = "#666";
+    downloadBtn.style.marginLeft = "8px";
+    ctaDiv.appendChild(downloadBtn);
+
+    resultEl.appendChild(ctaDiv);
+
+    downloadBtn.addEventListener("click", () => {
+      downloadChartPng(contentEl.querySelector("svg"), quiz.title);
     });
 
   } catch (e) {
+    clearTimeout(timeout);
     loadingEl.style.display = "none";
     errorEl.style.display = "block";
-    errorEl.textContent = "エラーが発生しました";
+    errorEl.textContent = t('error');
     console.error(e);
   }
 }
