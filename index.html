@@ -1777,9 +1777,24 @@ async function publishQuiz() {
   }
 }
 
-// --------------- ?project_id 自動読込 ---------------
+// --------------- ?data_url / ?project_id 自動読込 ---------------
 async function autoLoadFromURL() {
   const params = new URLSearchParams(window.location.search);
+
+  // ?data_url= support
+  const dataUrl = params.get("data_url");
+  if (dataUrl) {
+    try {
+      const res = await fetch(dataUrl);
+      const text = await res.text();
+      const blob = new Blob([text], { type: "text/csv" });
+      const file = new File([blob], dataUrl.split("/").pop() || "data.csv", { type: "text/csv" });
+      handleFile(file);
+    } catch (err) { console.error("data_url load failed:", err); }
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return;
+  }
+
   const projectId = params.get("project_id");
   if (!projectId) return;
 
@@ -1902,6 +1917,18 @@ function setupToolHeader() {
     onProjectSave: (meta) => {
       currentProjectId = meta.id;
       currentProjectName = meta.name;
+    },
+  });
+
+  // Sample data picker integration
+  toolHeader.setSampleConfig({
+    toolId: "drawing-line-chart",
+    onSampleSelect: async (detail) => {
+      const res = await fetch(detail.url);
+      const text = await res.text();
+      const blob = new Blob([text], { type: "text/csv" });
+      const file = new File([blob], (detail.name || "sample") + ".csv", { type: "text/csv" });
+      handleFile(file);
     },
   });
 }
