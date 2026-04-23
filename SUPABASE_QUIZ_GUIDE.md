@@ -46,6 +46,7 @@ CREATE TABLE quiz_quizzes (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   title TEXT NOT NULL,
   chart_config JSONB NOT NULL,
+  created_by UUID DEFAULT NULL REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -57,7 +58,7 @@ CREATE POLICY "Anyone can create quizzes" ON quiz_quizzes FOR INSERT WITH CHECK 
 
 ### quiz_responses テーブル
 
-クイズの回答データ（ユーザーの予想、スコア）を保存する。
+クイズの回答データ（ユーザーの予測、スコア）を保存する。
 
 ```sql
 CREATE TABLE quiz_responses (
@@ -136,15 +137,24 @@ const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KE
 「公開」ボタンで `chart_config` を `quiz_quizzes` に保存し、クイズURLを発行する。
 
 ```javascript
+async function getAuthUserId() {
+  if (!window.datavizSupabase) return null;
+  const { data: { session } } = await window.datavizSupabase.auth.getSession();
+  return session?.user?.id || null;
+}
+
 async function publishQuiz() {
   const cfg = buildConfig();
   if (!cfg) return;
+
+  const createdBy = await getAuthUserId();
 
   const { data, error } = await quizSupabase
     .from("quiz_quizzes")
     .insert({
       title: cfg.title || "無題のクイズ",
       chart_config: cfg,
+      created_by: createdBy,
     })
     .select("id")
     .single();
@@ -333,10 +343,19 @@ chart.renderPrediction(response.prediction_data);
 | ログイン/ログアウト | `window.datavizSupabase` | dataviz.jp 共通認証 |
 | プロジェクト保存/読込 | `api.dataviz.jp` REST API | dataviz.jp 共通機能 |
 | クイズ公開/回答/シェア | `quizSupabase` | 本ツール独自の機能 |
+| クイズ作成者の記録 | `datavizSupabase` → `quizSupabase` | 公開時に `datavizSupabase` からユーザーIDを取得し、`quiz_quizzes.created_by` に記録 |
 
 ### RLSポリシー
 
 クイズは認証なしで回答・閲覧できる必要があるため、`anon` ロールに SELECT / INSERT を許可する。
+
+### created_by（クイズ作成者）の記録
+
+`quiz_quizzes.created_by` には `datavizSupabase.auth.getSession()` から取得したユーザーID（UUID）を格納する。同じ Supabase プロジェクト内の `auth.users(id)` への外部キー制約が設定されている。
+
+- ログイン済みユーザーが公開すると、`created_by` にユーザーIDが記録される
+- 未ログイン状態（通常はサブスクチェックにより到達しない）の場合は `NULL` が入る
+- `quizSupabase` クライアントは anon キーで動作するため、`created_by` の値はアプリケーション層で設定する（RLS の `auth.uid()` ではない）
 
 ### ResizeObserver との共存
 
