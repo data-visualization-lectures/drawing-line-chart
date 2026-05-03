@@ -786,32 +786,6 @@ body {
   </div>
 </div>
 
-<!-- タイトル入力モーダル -->
-<div class="dvz-modal-overlay" id="dvz-title-modal">
-  <div class="dvz-modal-inner">
-    <h3 id="dvz-title-modal-heading">タイトルを入力</h3>
-    <input type="text" id="dvz-title-input">
-    <div class="dvz-modal-actions" style="justify-content:flex-end">
-      <button id="dvz-title-cancel">キャンセル</button>
-      <button id="dvz-title-ok" class="dvz-btn-primary">OK</button>
-    </div>
-  </div>
-</div>
-
-<!-- シェアURLモーダル -->
-<div class="dvz-modal-overlay" id="dvz-share-modal">
-  <div class="dvz-modal-inner">
-    <h3 id="dvz-share-heading">クイズを公開しました</h3>
-    <p id="dvz-share-desc" style="font-size:0.9rem;color:#666;margin-bottom:12px">以下のURLを共有すると、誰でもクイズに回答できます。</p>
-    <input type="text" id="dvz-share-url" readonly style="background:#f8f8f8;cursor:text">
-    <div class="dvz-modal-actions">
-      <button id="dvz-share-copy" class="dvz-btn-primary">URLをコピー</button>
-      <button id="dvz-share-x" class="dvz-btn-dark">Xでシェア</button>
-      <button id="dvz-share-close">閉じる</button>
-    </div>
-  </div>
-</div>
-
 <script type="module">
 // ============================================================
 //  YouDrawIt — 描いて答える折れ線グラフ テンプレート
@@ -912,17 +886,12 @@ class ChartInstance {
     wrap.innerHTML = `
       <h2>${cfg.title}</h2>
       <div class="ydi-svg-container"></div>
-      <div class="ydi-button-area">
-        <button class="ydi-button ydi-publish-btn">公開</button>
-      </div>
       <div class="ydi-after-reveal">${cfg.afterRevealHTML}</div>
     `;
 
     this.parentEl.appendChild(wrap);
     this.wrapEl = wrap;
     this.svgContainer = wrap.querySelector(".ydi-svg-container");
-    this.buttonEl = wrap.querySelector(".ydi-button");
-    this.buttonEl.addEventListener("click", () => publishQuiz());
   }
 
   _render() {
@@ -1654,21 +1623,66 @@ async function generateThumbnail() {
   }
 }
 
-// --------------- 認証トークン取得 ---------------
+// --------------- 認証 / Share helpers ---------------
+const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
+
+async function waitForDatavizAuthReady(timeoutMs = 5000) {
+  if (window.datavizSupabase) return window.datavizSupabase;
+
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const check = setInterval(() => {
+      if (window.datavizSupabase) {
+        clearInterval(check);
+        resolve(window.datavizSupabase);
+        return;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        clearInterval(check);
+        resolve(null);
+      }
+    }, 200);
+  });
+}
+
 async function getAccessToken() {
+  await waitForDatavizAuthReady();
   if (!window.datavizSupabase) return null;
   const { data: { session } } = await window.datavizSupabase.auth.getSession();
   return session?.access_token || null;
 }
 
-async function getAuthUserId() {
-  if (!window.datavizSupabase) return null;
-  const { data: { session } } = await window.datavizSupabase.auth.getSession();
-  return session?.user?.id || null;
-}
-
 function getToolHeader() {
   return document.querySelector("dataviz-tool-header");
+}
+
+async function waitForToolHeaderReady(timeoutMs = 5000) {
+  const current = getToolHeader();
+  if (current && typeof current.setConfig === "function") return current;
+
+  if (window.customElements && typeof window.customElements.whenDefined === "function") {
+    try {
+      await window.customElements.whenDefined("dataviz-tool-header");
+    } catch (_error) {}
+  }
+
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const check = setInterval(() => {
+      const header = getToolHeader();
+      if (header && typeof header.setConfig === "function") {
+        clearInterval(check);
+        resolve(header);
+        return;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        clearInterval(check);
+        resolve(header || null);
+      }
+    }, 100);
+  });
 }
 
 function showMessage(msg, type = "info") {
@@ -1680,108 +1694,212 @@ function showMessage(msg, type = "info") {
   }
 }
 
-function showTitleModal(defaultTitle) {
-  return new Promise((resolve) => {
-    const overlay = document.getElementById('dvz-title-modal');
-    const input = document.getElementById('dvz-title-input');
-    input.value = defaultTitle || '';
-    overlay.classList.add('active');
-    input.focus();
-    input.select();
-
-    function cleanup() {
-      overlay.classList.remove('active');
-      okBtn.removeEventListener('click', onOk);
-      cancelBtn.removeEventListener('click', onCancel);
-      overlay.removeEventListener('click', onOverlay);
-      input.removeEventListener('keydown', onKey);
-    }
-    function onOk() { cleanup(); resolve(input.value.trim() || null); }
-    function onCancel() { cleanup(); resolve(null); }
-    function onOverlay(e) { if (e.target === overlay) { cleanup(); resolve(null); } }
-    function onKey(e) { if (e.key === 'Enter') onOk(); else if (e.key === 'Escape') onCancel(); }
-
-    const okBtn = document.getElementById('dvz-title-ok');
-    const cancelBtn = document.getElementById('dvz-title-cancel');
-    okBtn.addEventListener('click', onOk);
-    cancelBtn.addEventListener('click', onCancel);
-    overlay.addEventListener('click', onOverlay);
-    input.addEventListener('keydown', onKey);
-  });
+function normalizeSavedProjectMeta(meta) {
+  const project = meta?.project && typeof meta.project === "object" ? meta.project : null;
+  return {
+    id: meta?.id || project?.id || null,
+    name: meta?.name || project?.name || null,
+  };
 }
 
-function showShareModal(shareUrl, title) {
-  const overlay = document.getElementById('dvz-share-modal');
-  const urlInput = document.getElementById('dvz-share-url');
-  urlInput.value = shareUrl;
-  overlay.classList.add('active');
-  urlInput.focus();
-  urlInput.select();
-
-  const close = () => overlay.classList.remove('active');
-
-  document.getElementById('dvz-share-copy').onclick = () => {
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      showMessage("URLをコピーしました", "success");
-    });
-  };
-
-  document.getElementById('dvz-share-x').onclick = () => {
-    const text = encodeURIComponent(title || '');
-    const url = encodeURIComponent(shareUrl);
-    window.open(`https://x.com/intent/tweet?text=${text}&url=${url}`, '_blank');
-  };
-
-  document.getElementById('dvz-share-close').onclick = close;
-  overlay.onclick = (e) => { if (e.target === overlay) close(); };
-}
-
-// --------------- 公開機能 ---------------
-const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
-
-async function publishQuiz() {
+function getCurrentProjectPayload() {
   const cfg = buildConfig();
-  if (!cfg) {
-    showMessage("データをアップロードして設定を完了してください", "error");
-    return;
+  const charts = cfg ? [cfg] : currentConfigs;
+  if (!Array.isArray(charts) || !charts.length) return null;
+  return { charts, version: 1 };
+}
+
+async function buildEditorSavePayload() {
+  const data = getCurrentProjectPayload();
+  if (!data) return null;
+
+  const cfg = buildConfig();
+  const fallbackTitle = currentConfigs[0]?.title || "新しいプロジェクト";
+  return {
+    name: currentProjectName || cfg?.title || fallbackTitle,
+    data,
+    thumbnailDataUri: await generateThumbnail(),
+    existingProjectId: currentProjectId,
+  };
+}
+
+function getCurrentQuizShareTitle() {
+  const cfg = buildConfig();
+  const candidates = [
+    cfg?.title,
+    currentConfigs[0]?.title,
+    currentProjectName,
+    "描いて答える折れ線グラフ",
+  ];
+  return candidates.map((value) => String(value || "").trim()).find(Boolean) || "描いて答える折れ線グラフ";
+}
+
+function escapeHtmlAttr(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildPublicQuizUrl(quizId) {
+  return `${DEPLOY_ORIGIN}/quiz.html?id=${encodeURIComponent(quizId)}`;
+}
+
+function buildQuizEmbedSrc(quizId) {
+  return `${buildPublicQuizUrl(quizId)}&embed=1`;
+}
+
+function buildQuizIframeEmbedCode(quizId, rawTitle) {
+  const resolvedTitle = String(rawTitle || "").trim();
+  const title = escapeHtmlAttr(resolvedTitle ? `${resolvedTitle} - 描いて答える折れ線グラフ` : "描いて答える折れ線グラフ");
+  return `<iframe title="${title}" src="${buildQuizEmbedSrc(quizId)}" frameborder="0" scrolling="auto" allow="fullscreen; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen="true" style="display:block;width:100%;max-width:100%;min-height:600px;border:0;margin:0 auto;padding:0;"></iframe>`;
+}
+
+async function publishQuizFromProject(options = {}) {
+  const projectId = String(options.projectId || "").trim();
+  if (!projectId) {
+    throw new Error("シェアする前にプロジェクトを保存してください");
   }
 
-  // タイトル入力モーダルで確認
-  const confirmedTitle = await showTitleModal(cfg.title);
-  if (!confirmedTitle) return;
-  cfg.title = confirmedTitle;
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    throw new Error("Login required");
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/publish-drawing-line-chart-quiz`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Dataviz-Authorization": `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      projectId,
+      fallbackTitle: String(options.fallbackTitle || "").trim() || null,
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Share publish failed (${response.status})`);
+  }
+  return payload || {};
+}
+
+async function generateQuizOgImage(title) {
+  const svgEl = document.querySelector(".ydi-chart-wrap svg");
+  if (!svgEl) return null;
+
+  const clone = svgEl.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+  const inlineStyles = (srcEl, cloneEl) => {
+    const computed = window.getComputedStyle(srcEl);
+    ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linecap",
+     "stroke-linejoin", "opacity", "fill-opacity", "stroke-opacity", "font-family",
+     "font-size", "font-weight", "text-anchor", "display", "visibility"].forEach((prop) => {
+      const val = computed.getPropertyValue(prop);
+      if (val) cloneEl.style.setProperty(prop, val);
+    });
+    for (let i = 0; i < srcEl.children.length; i++) {
+      if (cloneEl.children[i]) inlineStyles(srcEl.children[i], cloneEl.children[i]);
+    }
+  };
+  inlineStyles(svgEl, clone);
+
+  clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach((el) => el.remove());
+
+  const allText = `${title || ""}${clone.textContent || ""}`;
+  const chars = [...new Set(allText.split(""))];
+  const fontCSS = await embedFontForChars(chars);
+  if (fontCSS) {
+    const styleEl = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    styleEl.textContent = fontCSS;
+    clone.insertBefore(styleEl, clone.firstChild);
+  }
+
+  const svgData = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
 
   try {
-    const createdBy = await getAuthUserId();
+    const img = await new Promise((resolve, reject) => {
+      const candidate = new Image();
+      candidate.onload = () => resolve(candidate);
+      candidate.onerror = reject;
+      candidate.src = url;
+    });
 
-    const { data, error } = await quizSupabase
-      .from("quiz_quizzes")
-      .insert({
-        title: cfg.title,
-        chart_config: cfg,
-        created_by: createdBy,
-      })
-      .select("id")
-      .single();
+    const ogWidth = 1200;
+    const ogHeight = 630;
+    const canvas = document.createElement("canvas");
+    canvas.width = ogWidth;
+    canvas.height = ogHeight;
 
-    if (error) throw error;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, ogWidth, ogHeight);
 
-    const quizUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${data.id}`;
+    const scale = Math.min(ogWidth / img.naturalWidth, (ogHeight - 60) / img.naturalHeight);
+    const dx = (ogWidth - img.naturalWidth * scale) / 2;
+    const dy = (ogHeight - 60 - img.naturalHeight * scale) / 2;
+    ctx.drawImage(img, dx, dy, img.naturalWidth * scale, img.naturalHeight * scale);
 
-    showMessage("公開しました", "success");
-    showShareModal(quizUrl, cfg.title);
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, ogHeight - 60, ogWidth, 60);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(title || "描いて答える折れ線グラフ", ogWidth / 2, ogHeight - 30);
 
-  } catch (e) {
-    console.error("Publish failed:", e);
-    showMessage("公開に失敗しました: " + e.message, "error");
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) resolve(pngBlob);
+        else reject(new Error("toBlob failed"));
+      }, "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }
 
-// --------------- ?data_url / ?project_id 自動読込 ---------------
+async function uploadQuizOgImage(quizId, pngBlob) {
+  if (!pngBlob) return null;
+
+  const { error } = await quizSupabase.storage
+    .from("quiz-og-images")
+    .upload(`quiz/${quizId}.png`, pngBlob, { contentType: "image/png", upsert: true });
+
+  if (error) {
+    console.warn("Quiz OG image upload failed:", error.message);
+    return null;
+  }
+
+  return `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/quiz/${quizId}.png`;
+}
+
+async function publishQuizShare({ projectId, title }) {
+  const result = await publishQuizFromProject({
+    projectId,
+    fallbackTitle: title,
+  });
+  const quizId = result?.quizId || result?.id || null;
+  if (!quizId) {
+    throw new Error("No quiz ID returned");
+  }
+
+  return {
+    shareId: quizId,
+    shareUrl: `${SUPABASE_URL}/functions/v1/og-drawing-line-chart-quiz?id=${quizId}`,
+    iframeCode: buildQuizIframeEmbedCode(quizId, title || result?.title || getCurrentQuizShareTitle()),
+  };
+}
+
+// --------------- ?data_url / ?projectId 自動読込 ---------------
 async function autoLoadFromURL() {
   const params = new URLSearchParams(window.location.search);
 
-  // ?data_url= support
   const dataUrl = params.get("data_url");
   if (dataUrl) {
     try {
@@ -1790,30 +1908,23 @@ async function autoLoadFromURL() {
       const blob = new Blob([text], { type: "text/csv" });
       const file = new File([blob], dataUrl.split("/").pop() || "data.csv", { type: "text/csv" });
       handleFile(file);
-    } catch (err) { console.error("data_url load failed:", err); }
+    } catch (err) {
+      console.error("data_url load failed:", err);
+    }
     window.history.replaceState({}, document.title, window.location.pathname);
     return;
   }
 
-  const projectId = params.get("project_id");
+  const projectId = params.get("projectId") || params.get("project_id");
   if (!projectId) return;
 
-  // Wait for auth to be ready
-  const waitForAuth = () => new Promise(resolve => {
-    if (window.datavizSupabase) return resolve();
-    const check = setInterval(() => {
-      if (window.datavizSupabase) { clearInterval(check); resolve(); }
-    }, 200);
-    setTimeout(() => { clearInterval(check); resolve(); }, 5000);
-  });
-
-  await waitForAuth();
+  await waitForDatavizAuthReady();
   const token = await getAccessToken();
   if (!token) return;
 
   try {
-    const header = getToolHeader();
-    if (header && header.loadProject) {
+    const header = await waitForToolHeaderReady();
+    if (header && typeof header.loadProject === "function") {
       const data = await header.loadProject(projectId);
       if (data && data.charts && Array.isArray(data.charts)) {
         restoreFormFromConfig(data.charts[0]);
@@ -1834,17 +1945,14 @@ function restoreFormFromConfig(cfg) {
   document.getElementById("quiz-title").value = cfg.title || "";
   document.getElementById("quiz-unit").value = cfg.unit || "";
   document.getElementById("quiz-style").value = cfg.style || "";
-  // Restore annotations
   document.getElementById("annotations-list").innerHTML = "";
   if (cfg.annotations) {
-    cfg.annotations.forEach(ann => addAnnotationRow(ann.startX, ann.endX, ann.label));
+    cfg.annotations.forEach((ann) => addAnnotationRow(ann.startX, ann.endX, ann.label));
   }
   if (cfg.drawStartX) {
     document.getElementById("quiz-draw-start").value = cfg.drawStartX;
   }
 
-  // debounce経由の updatePreview → buildConfig 再構築ではなく、
-  // 保存されたcfgで直接チャートを描画する（フォーム→buildConfig 迂回の問題を回避）
   clearTimeout(previewDebounce);
   const placeholder = document.getElementById("preview-placeholder");
   if (placeholder) placeholder.style.display = "none";
@@ -1853,8 +1961,10 @@ function restoreFormFromConfig(cfg) {
   currentConfigs = [cfg];
   new ChartInstance(previewContainer, cfg);
 
-  // プロジェクト復元時は全ステップを開く
-  openStep(1); openStep(2); openStep(3); openStep(4);
+  openStep(1);
+  openStep(2);
+  openStep(3);
+  openStep(4);
 }
 
 // --------------- ツールヘッダー設定 ---------------
@@ -1887,40 +1997,82 @@ const SAMPLE_DATA = [
   },
 ];
 
-function setupToolHeader() {
-  const toolHeader = getToolHeader();
+async function setupToolHeader() {
+  const toolHeader = await waitForToolHeaderReady();
   if (!toolHeader || !toolHeader.setConfig) return;
+  if (toolHeader.__dvzDrawingLineChartHeaderConfigured === "1") return;
+  toolHeader.__dvzDrawingLineChartHeaderConfigured = "1";
+
+  if (typeof toolHeader.loadProject === "function" && toolHeader.__dvzLoadProjectWrapped !== "1") {
+    const originalLoadProject = toolHeader.loadProject.bind(toolHeader);
+    toolHeader.loadProject = async (projectId, ...args) => {
+      const data = await originalLoadProject(projectId, ...args);
+      const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
+      if (data && normalizedProjectId) {
+        currentProjectId = normalizedProjectId;
+      }
+      return data;
+    };
+    toolHeader.__dvzLoadProjectWrapped = "1";
+  }
 
   toolHeader.setConfig({
     logo: { type: "text", text: "描いて答える折れ線グラフ" },
     buttons: [
       { label: "プロジェクトの読込", action: () => toolHeader.showLoadModal(), id: "load-btn", align: "right" },
       { label: "プロジェクトの保存", action: async () => {
-        const cfg = buildConfig();
-        toolHeader.showSaveModal({
-          name: currentProjectName || (cfg?.title) || "新しいプロジェクト",
-          data: { charts: cfg ? [cfg] : currentConfigs, version: 1 },
-          thumbnailDataUri: await generateThumbnail(),
-          existingProjectId: currentProjectId,
-        });
+        const payload = await buildEditorSavePayload();
+        if (!payload?.data) {
+          showMessage("データをアップロードして設定を完了してください", "error");
+          return;
+        }
+        toolHeader.showSaveModal(payload);
       }, id: "save-btn", align: "right" },
+      { label: "シェア", action: () => toolHeader.shareProject?.(), id: "share-btn", align: "right" },
     ],
   });
 
   toolHeader.setProjectConfig({
     appName: APP_NAME,
-    onProjectLoad: (projectData) => {
+    onProjectLoad: (projectData, meta) => {
       if (projectData.charts && Array.isArray(projectData.charts)) {
         restoreFormFromConfig(projectData.charts[0]);
       }
+      currentProjectId = meta?.isGroupProject ? null : (meta?.projectId || currentProjectId);
+      if (!meta?.isGroupProject && meta?.name) {
+        currentProjectName = meta.name;
+      }
     },
     onProjectSave: (meta) => {
-      currentProjectId = meta.id;
-      currentProjectName = meta.name;
+      const normalized = normalizeSavedProjectMeta(meta);
+      currentProjectId = normalized.id;
+      currentProjectName = normalized.name;
+    },
+    onProjectDelete: (deletedId) => {
+      if (deletedId && currentProjectId === deletedId) {
+        currentProjectId = null;
+        currentProjectName = null;
+      }
     },
   });
 
-  // Sample data picker integration
+  if (typeof toolHeader.setShareConfig === "function") {
+    toolHeader.setShareConfig({
+      getSavePayload: () => buildEditorSavePayload(),
+      getShareTitle: () => getCurrentQuizShareTitle(),
+      publishShare: (args) => publishQuizShare(args),
+      afterPublish: async ({ shareId, title }) => {
+        try {
+          const pngBlob = await generateQuizOgImage(title || getCurrentQuizShareTitle());
+          return !!(await uploadQuizOgImage(shareId, pngBlob));
+        } catch (error) {
+          console.warn("Quiz OGP publish failed:", error);
+          return false;
+        }
+      },
+    });
+  }
+
   toolHeader.setSampleConfig({
     toolId: "drawing-line-chart",
     onSampleSelect: async (detail) => {
