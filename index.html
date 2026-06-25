@@ -1915,7 +1915,7 @@ async function autoLoadFromURL() {
     return;
   }
 
-  const projectId = params.get("projectId") || params.get("project_id");
+  const projectId = params.get("projectId");
   if (!projectId) return;
 
   await waitForDatavizAuthReady();
