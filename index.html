@@ -1891,7 +1891,7 @@ async function publishQuizShare({ projectId, title }) {
 
   return {
     shareId: quizId,
-    shareUrl: `${SUPABASE_URL}/functions/v1/og-drawing-line-chart-quiz?id=${quizId}`,
+    shareUrl: buildPublicQuizUrl(quizId),
     iframeCode: buildQuizIframeEmbedCode(quizId, title || result?.title || getCurrentQuizShareTitle()),
   };
 }

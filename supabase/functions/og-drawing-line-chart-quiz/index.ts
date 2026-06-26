@@ -1,5 +1,5 @@
 // Supabase Edge Function: OGP対応クイズ共有ページ
-// 常にOGPメタ付きHTMLを返し、人間のユーザーはHTML側で quiz.html へ遷移させる
+// SNSクローラーにはOGPメタタグを返し、人間のユーザーには302リダイレクトする
 //
 // デプロイ: supabase functions deploy og-drawing-line-chart-quiz --no-verify-jwt
 
@@ -10,6 +10,8 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
 const DEFAULT_OG_IMAGE =
   "https://interactive-chart-builder.dataviz.jp/images/og-default.png";
+const BOT_UA_PATTERN =
+  /Twitterbot|facebookexternalhit|Facebot|LinkedInBot|Slackbot|Discordbot|LINE|Googlebot|bingbot/i;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -50,6 +52,18 @@ Deno.serve(async (req) => {
   }
 
   const shareUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${id}`;
+  const ua = req.headers.get("user-agent") || "";
+
+  if (!BOT_UA_PATTERN.test(ua)) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        "Location": shareUrl,
+        "Cache-Control": "public, max-age=60, s-maxage=300",
+        "Vary": "User-Agent",
+      },
+    });
+  }
 
   const { data: quiz } = await supabase
     .from("quiz_quizzes")
@@ -89,15 +103,7 @@ Deno.serve(async (req) => {
 <meta name="twitter:description" content="${ogDesc}">
 <meta name="twitter:image" content="${escapedOgImage}">
 <link rel="canonical" href="${escapedShareUrl}">
-<meta http-equiv="refresh" content="0;url=${escapedShareUrl}">
 <title>${ogTitle}</title>
-<script>
-window.addEventListener('DOMContentLoaded', function () {
-  window.setTimeout(function () {
-    window.location.replace(${JSON.stringify(shareUrl)});
-  }, 0);
-});
-</script>
 </head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;line-height:1.5;color:#111827;">
 <p>Redirecting to the quiz...</p>
@@ -109,6 +115,7 @@ window.addEventListener('DOMContentLoaded', function () {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "public, max-age=60, s-maxage=300",
+      "Vary": "User-Agent",
     },
   });
 });
