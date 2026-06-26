@@ -250,7 +250,6 @@ const TRANSLATIONS = {
     scoreHigh: '攻めた予想でした',
     scoreOff: 'ずれていますね',
     shareTitle: '結果をシェアしよう',
-    shareX: '𝕏 でシェア',
     copyUrl: 'URLをコピー',
     copied: 'コピー済み',
     saveImage: '画像を保存',
@@ -275,7 +274,6 @@ const TRANSLATIONS = {
     scoreHigh: 'Bold prediction',
     scoreOff: 'A bit off',
     shareTitle: 'Share your results',
-    shareX: 'Share on 𝕏',
     copyUrl: 'Copy URL',
     copied: 'Copied!',
     saveImage: 'Save image',
@@ -1113,8 +1111,6 @@ async function init() {
 
         // Share URLs
         const shareUrl = `${DEPLOY_ORIGIN}/share.html?id=${response.id}`;
-        // OGP対応シェアURL（Supabase Edge Function経由）
-        const ogShareUrl = `${SUPABASE_URL}/functions/v1/og-share?id=${response.id}`;
 
         const afterEl = containerEl.querySelector(".ydi-after-reveal");
 
@@ -1128,15 +1124,6 @@ async function init() {
 
         const shareButtons = document.createElement('div');
         shareButtons.style.cssText = 'margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap';
-
-        const xBtn = document.createElement('a');
-        xBtn.className = 'ydi-share-btn';
-        xBtn.id = 'share-x-btn';
-        xBtn.href = `https://x.com/intent/tweet?url=${encodeURIComponent(ogShareUrl)}&text=${encodeURIComponent(quiz.title + "　" + label)}`;
-        xBtn.target = '_blank';
-        xBtn.rel = 'noopener';
-        xBtn.textContent = t('shareX');
-        shareButtons.appendChild(xBtn);
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'ydi-share-btn';
@@ -1154,7 +1141,7 @@ async function init() {
         afterEl.appendChild(shareArea);
 
         copyBtn.addEventListener("click", () => {
-          navigator.clipboard.writeText(ogShareUrl).then(() => {
+          navigator.clipboard.writeText(shareUrl).then(() => {
             copyBtn.textContent = t('copied');
             setTimeout(() => { copyBtn.textContent = t('copyUrl'); }, 2000);
           });

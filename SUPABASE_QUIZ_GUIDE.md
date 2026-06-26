@@ -203,18 +203,15 @@ const { data: response, error } = await quizSupabase
 
 ### 5-3. シェアURL生成
 
-2つのURLを生成する:
+ユーザーに表示・コピー・SNS共有するURLは、通常の公開ページURLを使用する:
 
 ```javascript
 // 通常のシェアURL（直接 share.html を表示）
 const shareUrl = `${location.origin}/share.html?id=${response.id}`;
-
-// OGP対応URL（SNSでシェアする際に使用）
-const ogShareUrl = `${SUPABASE_URL}/functions/v1/og-share?id=${response.id}`;
 ```
 
-- **Xでシェア**: `ogShareUrl` を使用（SNSクローラーがOGPメタタグを取得できるように）
-- **URLコピー**: `ogShareUrl` を使用
+- **URLコピー**: `shareUrl` を使用
+- **OGP対応URL**: 既存URL互換のため `{SUPABASE_URL}/functions/v1/og-share?id={response_id}` は残す。将来的な削除方針は `../shared/SHARE_OGP_LEGACY.md` を参照。
 
 ## Step 6: OG画像の生成・アップロード
 
