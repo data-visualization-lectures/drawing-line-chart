@@ -1460,6 +1460,7 @@ class ChartInstance {
     // Download handlers
     afterEl.querySelectorAll(".ydi-download-btn").forEach(btn => {
       btn.addEventListener("click", () => {
+        showProcessingToast("書き出し中です");
         const fmt = btn.dataset.fmt;
         let content, mime, ext;
         if (fmt === "csv") {
@@ -1685,13 +1686,47 @@ async function waitForToolHeaderReady(timeoutMs = 5000) {
   });
 }
 
-function showMessage(msg, type = "info") {
+function showMessage(msg, type = "info", duration) {
   const th = getToolHeader();
   if (th && th.showMessage) {
-    th.showMessage(msg, type);
+    th.showMessage(msg, type, duration);
   } else {
     alert(msg);
   }
+}
+
+function showProcessingToast(msg, duration = 5000) {
+  showMessage(msg || "処理中です", "info", duration);
+}
+
+function installHeaderProcessingToasts(header) {
+  if (!header || header.__dvzNativeProjectProcessingToasts === "1" || header.__dvzProcessingToastsInstalled === "1") return;
+
+  if (typeof header.showLoadModal === "function") {
+    const originalShowLoadModal = header.showLoadModal.bind(header);
+    header.showLoadModal = (...args) => {
+      showProcessingToast("プロジェクト一覧を読み込み中です");
+      return originalShowLoadModal(...args);
+    };
+  }
+
+  if (typeof header.loadProject === "function") {
+    const originalLoadProject = header.loadProject.bind(header);
+    header.loadProject = (...args) => {
+      showProcessingToast("プロジェクトを読み込み中です");
+      return originalLoadProject(...args);
+    };
+  }
+
+  if (typeof header.saveProject === "function") {
+    const originalSaveProject = header.saveProject.bind(header);
+    header.saveProject = (...args) => {
+      showProcessingToast("プロジェクトを保存中です");
+      return originalSaveProject(...args);
+    };
+  }
+
+  header.__dvzProcessingToastsInstalled = "1";
 }
 
 function normalizeSavedProjectMeta(meta) {
@@ -1880,6 +1915,7 @@ async function uploadQuizOgImage(quizId, pngBlob) {
 }
 
 async function publishQuizShare({ projectId, title }) {
+  showProcessingToast("シェアを作成中です");
   const result = await publishQuizFromProject({
     projectId,
     fallbackTitle: title,
@@ -2015,12 +2051,18 @@ async function setupToolHeader() {
     };
     toolHeader.__dvzLoadProjectWrapped = "1";
   }
+  installHeaderProcessingToasts(toolHeader);
 
   toolHeader.setConfig({
     logo: { type: "text", text: "描いて答える折れ線グラフ" },
     buttons: [
       { label: "プロジェクトの読込", action: () => toolHeader.showLoadModal(), id: "load-btn", align: "right" },
       { label: "プロジェクトの保存", action: async () => {
+        if (!getCurrentProjectPayload()) {
+          showMessage("データをアップロードして設定を完了してください", "error");
+          return;
+        }
+        showProcessingToast("保存準備中です");
         const payload = await buildEditorSavePayload();
         if (!payload?.data) {
           showMessage("データをアップロードして設定を完了してください", "error");
@@ -2231,6 +2273,7 @@ function parseWithColumns(xColName, yColName) {
 function handleFile(file) {
   sampleSelect.value = "";
   document.getElementById("data-source").innerHTML = "";
+  showProcessingToast("ファイルを読み込み中です");
   const reader = new FileReader();
   reader.onload = (e) => {
     const text = e.target.result;
