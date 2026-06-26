@@ -20,6 +20,7 @@
 <!-- D3.js -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="d3.sketchy.js"></script>
+<script src="safe-dom.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -811,6 +812,12 @@ const DEFAULTS = {
   afterRevealHTML: "",
 };
 
+const {
+  appendSanitizedHtml,
+  createSingleColumnTable,
+  populateSelect,
+} = window.dvzDom;
+
 // --------------- ユーティリティ ---------------
 function clamp(min, max, val) {
   return Math.max(min, Math.min(max, val));
@@ -883,15 +890,22 @@ class ChartInstance {
     wrap.className = "ydi-chart-wrap" + (cfg.style === "sketchy" ? " ydi-sketchy" : "");
     wrap.id = `ydi-${cfg.id}`;
 
-    wrap.innerHTML = `
-      <h2>${cfg.title}</h2>
-      <div class="ydi-svg-container"></div>
-      <div class="ydi-after-reveal">${cfg.afterRevealHTML}</div>
-    `;
+    const h2 = document.createElement("h2");
+    h2.textContent = cfg.title || "";
+    wrap.appendChild(h2);
+
+    const svgContainer = document.createElement("div");
+    svgContainer.className = "ydi-svg-container";
+    wrap.appendChild(svgContainer);
+
+    const afterReveal = document.createElement("div");
+    afterReveal.className = "ydi-after-reveal";
+    appendSanitizedHtml(afterReveal, cfg.afterRevealHTML);
+    wrap.appendChild(afterReveal);
 
     this.parentEl.appendChild(wrap);
     this.wrapEl = wrap;
-    this.svgContainer = wrap.querySelector(".ydi-svg-container");
+    this.svgContainer = svgContainer;
   }
 
   _render() {
@@ -899,7 +913,7 @@ class ChartInstance {
     const isMobile = window.innerWidth < 600;
 
     // Clear previous SVG (for resize)
-    this.svgContainer.innerHTML = "";
+    this.svgContainer.replaceChildren();
 
     const totalWidth = this.svgContainer.offsetWidth || 560;
     const margin = { ...cfg.margin };
@@ -1448,14 +1462,30 @@ class ChartInstance {
     }));
 
     const afterEl = this.wrapEl.querySelector(".ydi-after-reveal");
-    const scoreHTML = `<div class="ydi-score ${cls}">${label}</div>`;
-    const downloadHTML = `<div class="ydi-download-area">
-      <button class="ydi-download-btn" data-fmt="csv">CSV</button>
-      <button class="ydi-download-btn" data-fmt="json">JSON</button>
-    </div>`;
-    afterEl.innerHTML = scoreHTML
-      + (cfg.afterRevealHTML ? `<p style="margin-top:8px">${cfg.afterRevealHTML}</p>` : "")
-      + downloadHTML;
+    afterEl.replaceChildren();
+
+    const scoreDiv = document.createElement("div");
+    scoreDiv.className = `ydi-score ${cls}`;
+    scoreDiv.textContent = label;
+    afterEl.appendChild(scoreDiv);
+
+    if (cfg.afterRevealHTML) {
+      const extra = document.createElement("div");
+      extra.style.marginTop = "8px";
+      appendSanitizedHtml(extra, cfg.afterRevealHTML);
+      afterEl.appendChild(extra);
+    }
+
+    const downloadArea = document.createElement("div");
+    downloadArea.className = "ydi-download-area";
+    ["csv", "json"].forEach((fmt) => {
+      const button = document.createElement("button");
+      button.className = "ydi-download-btn";
+      button.dataset.fmt = fmt;
+      button.textContent = fmt.toUpperCase();
+      downloadArea.appendChild(button);
+    });
+    afterEl.appendChild(downloadArea);
 
     // Download handlers
     afterEl.querySelectorAll(".ydi-download-btn").forEach(btn => {
@@ -1791,6 +1821,13 @@ function buildQuizIframeEmbedCode(quizId, rawTitle) {
   return `<iframe title="${title}" src="${buildQuizEmbedSrc(quizId)}" frameborder="0" scrolling="auto" allow="fullscreen; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen="true" style="display:block;width:100%;max-width:100%;min-height:600px;border:0;margin:0 auto;padding:0;"></iframe>`;
 }
 
+function getApiErrorMessage(payload, fallback) {
+  if (typeof payload?.error === "string") return payload.error;
+  if (typeof payload?.error?.message === "string") return payload.error.message;
+  if (typeof payload?.message === "string") return payload.message;
+  return fallback;
+}
+
 async function publishQuizFromProject(options = {}) {
   const projectId = String(options.projectId || "").trim();
   if (!projectId) {
@@ -1816,7 +1853,7 @@ async function publishQuizFromProject(options = {}) {
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(payload?.error || payload?.message || `Share publish failed (${response.status})`);
+    throw new Error(getApiErrorMessage(payload, `Share publish failed (${response.status})`));
   }
   return payload || {};
 }
@@ -1981,7 +2018,7 @@ function restoreFormFromConfig(cfg) {
   document.getElementById("quiz-title").value = cfg.title || "";
   document.getElementById("quiz-unit").value = cfg.unit || "";
   document.getElementById("quiz-style").value = cfg.style || "";
-  document.getElementById("annotations-list").innerHTML = "";
+  document.getElementById("annotations-list").replaceChildren();
   if (cfg.annotations) {
     cfg.annotations.forEach((ann) => addAnnotationRow(ann.startX, ann.endX, ann.label));
   }
@@ -1993,7 +2030,7 @@ function restoreFormFromConfig(cfg) {
   const placeholder = document.getElementById("preview-placeholder");
   if (placeholder) placeholder.style.display = "none";
   previewSection.style.display = "block";
-  previewContainer.innerHTML = "";
+  previewContainer.replaceChildren();
   currentConfigs = [cfg];
   new ChartInstance(previewContainer, cfg);
 
@@ -2157,7 +2194,12 @@ sampleSelect.addEventListener("change", async () => {
     restoreFormFromConfig({ ...sample, data });
     const srcEl = document.getElementById("data-source");
     if (sample.sourceText && sample.sourceURL) {
-      srcEl.innerHTML = `出典: <a href="${sample.sourceURL}" target="_blank" rel="noopener">${sample.sourceText}</a>`;
+      const sourceLink = document.createElement("a");
+      sourceLink.href = sample.sourceURL;
+      sourceLink.target = "_blank";
+      sourceLink.rel = "noopener";
+      sourceLink.textContent = sample.sourceText;
+      srcEl.replaceChildren("出典: ", sourceLink);
     }
   } catch (err) {
     console.error("サンプルデータの読み込みに失敗:", err);
@@ -2272,7 +2314,7 @@ function parseWithColumns(xColName, yColName) {
 
 function handleFile(file) {
   sampleSelect.value = "";
-  document.getElementById("data-source").innerHTML = "";
+  document.getElementById("data-source").replaceChildren();
   showProcessingToast("ファイルを読み込み中です");
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -2302,8 +2344,8 @@ function handleFile(file) {
         const colXSel = document.getElementById("col-x");
         const colYSel = document.getElementById("col-y");
         const numericCols = cols.filter(c => isNumericCol(rows, c));
-        colXSel.innerHTML = cols.map(c => `<option value="${c}"${c === autoX ? " selected" : ""}>${c}</option>`).join("");
-        colYSel.innerHTML = numericCols.map(c => `<option value="${c}"${c === autoY ? " selected" : ""}>${c}</option>`).join("");
+        populateSelect(colXSel, cols.map(c => ({ value: c, label: c })), autoX);
+        populateSelect(colYSel, numericCols.map(c => ({ value: c, label: c })), autoY);
         document.getElementById("col-select-row").style.display = "";
 
         currentXFormat = detectXFormat(rows, autoX);
@@ -2352,31 +2394,26 @@ function onDataLoaded() {
   // Show data preview tables (2 columns aligned with dropdowns)
   const colXLabel = document.getElementById("col-x").value || "x";
   const colYLabel = document.getElementById("col-y").value || "y";
-  let htmlX = `<table><thead><tr><th>${colXLabel}</th></tr></thead><tbody>`;
-  let htmlY = `<table><thead><tr><th>${colYLabel}</th></tr></thead><tbody>`;
+  let valuesX;
+  let valuesY;
   if (csvRawRows && csvCols) {
-    csvRawRows.forEach(row => {
-      htmlX += `<tr><td>${row[colXLabel] || ""}</td></tr>`;
-      htmlY += `<tr><td>${row[colYLabel] || ""}</td></tr>`;
-    });
+    valuesX = csvRawRows.map(row => row[colXLabel] || "");
+    valuesY = csvRawRows.map(row => row[colYLabel] || "");
   } else {
-    uploadedData.forEach(d => {
-      htmlX += `<tr><td>${d.x}</td></tr>`;
-      htmlY += `<tr><td>${d.y}</td></tr>`;
-    });
+    valuesX = uploadedData.map(d => d.x);
+    valuesY = uploadedData.map(d => d.y);
   }
-  htmlX += "</tbody></table>";
-  htmlY += "</tbody></table>";
-  document.getElementById("data-preview-x").innerHTML = htmlX;
-  document.getElementById("data-preview-y").innerHTML = htmlY;
+  document.getElementById("data-preview-x").replaceChildren(createSingleColumnTable(colXLabel, valuesX));
+  document.getElementById("data-preview-y").replaceChildren(createSingleColumnTable(colYLabel, valuesY));
   dataPreview.style.display = "";
 
   // Populate period select dropdowns
   const periodStartSel = document.getElementById("period-start");
   const periodEndSel = document.getElementById("period-end");
   const allXValues = uploadedData.map(d => d.x);
-  periodStartSel.innerHTML = allXValues.map(x => `<option value="${x}">${formatXForDropdown(x)}</option>`).join("");
-  periodEndSel.innerHTML = allXValues.map(x => `<option value="${x}">${formatXForDropdown(x)}</option>`).join("");
+  const periodOptions = allXValues.map(x => ({ value: x, label: formatXForDropdown(x) }));
+  populateSelect(periodStartSel, periodOptions, allXValues[0]);
+  populateSelect(periodEndSel, periodOptions, allXValues[allXValues.length - 1]);
   periodStartSel.value = allXValues[0];
   periodEndSel.value = allXValues[allXValues.length - 1];
   periodStartSel.disabled = false;
@@ -2405,7 +2442,7 @@ function getFilteredData() {
 function populateDrawStart() {
   const filtered = getFilteredData();
   if (!filtered || filtered.length < 2) return;
-  drawStartSelect.innerHTML = "";
+  drawStartSelect.replaceChildren();
   drawStartSelect.disabled = false;
   const xValues = filtered.map(d => d.x);
   const midIdx = Math.floor(xValues.length / 2);
@@ -2435,7 +2472,7 @@ function updatePreview() {
     const placeholder = document.getElementById("preview-placeholder");
     if (placeholder) placeholder.style.display = "none";
     previewSection.style.display = "block";
-    previewContainer.innerHTML = "";
+    previewContainer.replaceChildren();
     // Remove existing chart wraps from preview
     previewContainer.querySelectorAll(".ydi-chart-wrap").forEach(el => el.remove());
 
@@ -2487,9 +2524,9 @@ document.getElementById("quiz-style").addEventListener("change", updatePreview);
 const annGranularity = document.getElementById("ann-granularity");
 
 // アノテーション粒度に応じた選択肢を生成
-function getAnnotationOptions(selectedVal) {
+function getAnnotationOptionItems() {
   const filtered = getFilteredData();
-  if (!filtered || filtered.length < 2) return "";
+  if (!filtered || filtered.length < 2) return [];
   const granularity = annGranularity.value;
   const minX = Math.floor(filtered[0].x);
   const maxX = Math.ceil(filtered[filtered.length - 1].x);
@@ -2506,29 +2543,57 @@ function getAnnotationOptions(selectedVal) {
       values.push({ val: y, label: String(y) });
     }
   }
-  return values.map(v => {
-    const sel = (selectedVal !== undefined && Math.abs(v.val - selectedVal) < 0.001) ? " selected" : "";
-    return `<option value="${v.val}"${sel}>${v.label}</option>`;
-  }).join("");
+  return values;
+}
+
+function populateAnnotationSelect(selectEl, selectedVal) {
+  const values = getAnnotationOptionItems();
+  populateSelect(selectEl, values.map(v => ({ value: v.val, label: v.label })));
+  if (selectedVal !== undefined) {
+    const selected = values.find(v => Math.abs(v.val - selectedVal) < 0.001);
+    if (selected) selectEl.value = String(selected.val);
+  }
+  return values.length;
 }
 
 function addAnnotationRow(startX, endX, label) {
-  const optionsStart = getAnnotationOptions(startX);
-  const optionsEnd = getAnnotationOptions(endX);
-  if (!optionsStart) return;
   const list = document.getElementById("annotations-list");
   const row = document.createElement("div");
   row.className = "ydi-annotation-row";
-  row.innerHTML = `
-    <div><label>開始</label><select class="ann-start">${optionsStart}</select></div>
-    <div><label>終了</label><select class="ann-end">${optionsEnd}</select></div>
-    <div class="ann-label-wrap"><label>ラベル</label><input type="text" class="ann-label" placeholder="例: 高市内閣" value="${label || ""}"><button type="button" class="ann-remove">&times;</button></div>
-  `;
-  // innerHTML の selected 属性だけでは値が反映されない場合があるため、明示的に設定
-  const startSel = row.querySelector(".ann-start");
-  const endSel = row.querySelector(".ann-end");
-  if (startX !== undefined) startSel.value = startX;
-  if (endX !== undefined) endSel.value = endX;
+
+  const startWrap = document.createElement("div");
+  const startLabel = document.createElement("label");
+  startLabel.textContent = "開始";
+  const startSel = document.createElement("select");
+  startSel.className = "ann-start";
+  startWrap.append(startLabel, startSel);
+
+  const endWrap = document.createElement("div");
+  const endLabel = document.createElement("label");
+  endLabel.textContent = "終了";
+  const endSel = document.createElement("select");
+  endSel.className = "ann-end";
+  endWrap.append(endLabel, endSel);
+
+  if (!populateAnnotationSelect(startSel, startX)) return;
+  populateAnnotationSelect(endSel, endX);
+
+  const labelWrap = document.createElement("div");
+  labelWrap.className = "ann-label-wrap";
+  const labelLabel = document.createElement("label");
+  labelLabel.textContent = "ラベル";
+  const labelInput = document.createElement("input");
+  labelInput.type = "text";
+  labelInput.className = "ann-label";
+  labelInput.placeholder = "例: 高市内閣";
+  labelInput.value = label || "";
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "ann-remove";
+  removeBtn.textContent = "×";
+  labelWrap.append(labelLabel, labelInput, removeBtn);
+
+  row.append(startWrap, endWrap, labelWrap);
   row.querySelectorAll("select, input").forEach(el => el.addEventListener("change", updatePreview));
   row.querySelector(".ann-label").addEventListener("input", updatePreview);
   list.appendChild(row);
@@ -2542,8 +2607,8 @@ annGranularity.addEventListener("change", () => {
     const endSel = row.querySelector(".ann-end");
     const startVal = parseFloat(startSel.value);
     const endVal = parseFloat(endSel.value);
-    startSel.innerHTML = getAnnotationOptions(startVal);
-    endSel.innerHTML = getAnnotationOptions(endVal);
+    populateAnnotationSelect(startSel, startVal);
+    populateAnnotationSelect(endSel, endVal);
   });
   updatePreview();
 });

@@ -244,12 +244,6 @@ function t(key) {
 }
 
 // ---- ユーティリティ ----
-function escapeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
 function setMeta(property, content) {
   const el = document.querySelector(`meta[property="${property}"]`)
           || document.querySelector(`meta[name="${property}"]`);
@@ -490,7 +484,7 @@ class ChartInstance {
     const { cfg } = this;
     const isMobile = window.innerWidth < 480;
     const isTablet = window.innerWidth < 768;
-    this.svgContainer.innerHTML = "";
+    this.svgContainer.replaceChildren();
 
     const totalWidth = this.svgContainer.offsetWidth || 560;
     const margin = { ...cfg.margin };

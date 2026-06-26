@@ -27,7 +27,7 @@ d3.sketchy.circle = function(selection) {
   gCirclePoints.push([c[0] + (r - (z * .375)) * .3,c[1] + (r - (r * .25)) * .9]);
   gCirclePoints.push([c[0],c[1] + r - (r * .35)]);
   
-      sketchyC = d3.line()
+      var sketchyC = d3.line()
         .x(function(d,i) {
         return d[0]
     })
@@ -113,7 +113,7 @@ d3.sketchy.rect = function(selection) {
   gRectPoints.push([c[0] + (z),c[1] + rh]);
 
   
-      sketchyC = d3.line()
+      var sketchyC = d3.line()
         .x(function(d,i) {
         return d[0]
     })

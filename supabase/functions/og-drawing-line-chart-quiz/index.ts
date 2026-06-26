@@ -4,34 +4,24 @@
 // デプロイ: supabase functions deploy og-drawing-line-chart-quiz --no-verify-jwt
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  escapeToAsciiHtml,
+  isBotUserAgent,
+  readUuidSearchParam,
+} from "../_shared/og.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
 const DEFAULT_OG_IMAGE =
   "https://interactive-chart-builder.dataviz.jp/images/og-default.png";
-const BOT_UA_PATTERN =
-  /Twitterbot|facebookexternalhit|Facebot|LinkedInBot|Slackbot|Discordbot|LINE|Googlebot|bingbot/i;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-function escapeToAsciiHtml(str: string): string {
-  let result = "";
-  for (const ch of str) {
-    const code = ch.codePointAt(0)!;
-    if (ch === "&") result += "&amp;";
-    else if (ch === '"') result += "&quot;";
-    else if (ch === "<") result += "&lt;";
-    else if (ch === ">") result += "&gt;";
-    else if (code > 127) result += `&#x${code.toString(16)};`;
-    else result += ch;
-  }
-  return result;
-}
-
 async function resolveOgImageUrl(id: string) {
+  const encodedId = encodeURIComponent(id);
   const quizOgImage =
-    `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/quiz/${id}.png`;
+    `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/quiz/${encodedId}.png`;
 
   try {
     const response = await fetch(quizOgImage, { method: "HEAD" });
@@ -45,16 +35,15 @@ async function resolveOgImageUrl(id: string) {
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const id = url.searchParams.get("id");
+  const id = readUuidSearchParam(url);
 
   if (!id) {
-    return new Response("Missing id parameter", { status: 400 });
+    return new Response("Invalid or missing id parameter", { status: 400 });
   }
 
-  const shareUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${id}`;
-  const ua = req.headers.get("user-agent") || "";
+  const shareUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${encodeURIComponent(id)}`;
 
-  if (!BOT_UA_PATTERN.test(ua)) {
+  if (!isBotUserAgent(req)) {
     return new Response(null, {
       status: 302,
       headers: {
