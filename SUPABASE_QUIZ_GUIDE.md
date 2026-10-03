@@ -9,7 +9,8 @@
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  index.html（作成画面）                                       │
-│  CSV → フォーム → [公開] → quiz_quizzes に chart_config 保存  │
+│  CSV → フォーム → プロジェクト保存 (api.dataviz.jp)            │
+│  → publish-drawing-line-chart-quiz が quiz_quizzes を upsert │
 └──────────────┬───────────────────────────────────────────────┘
                │ quiz_id を含むURLを発行
                ▼
@@ -23,12 +24,14 @@
                │                      │
                ▼                      ▼
 ┌──────────────────────┐  ┌───────────────────────────────────┐
-│  share.html           │  │  og-share（Edge Function）         │
-│  （結果閲覧画面）      │  │  SNSボット → OGPメタタグ返却       │
-│  quiz_responses を     │  │  人間 → 302で share.html へ        │
+│  share.html           │  │  og-share / og-drawing-line-chart- │
+│  （結果閲覧画面）      │  │  quiz（Edge Function）             │
+│  quiz_responses を     │  │  SNSボット → OGP、人間 → 302       │
 │  読み込み静的表示      │  └───────────────────────────────────┘
 └──────────────────────┘
 ```
+
+描画は `ydi-chart.js` の `ChartInstance` を 3 ページで共有する。作成・回答は `mode: "interactive"`、結果は `mode: "static"` + `renderPrediction()`。
 
 ## 前提条件
 
@@ -50,10 +53,10 @@ CREATE TABLE quiz_quizzes (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- RLS: 誰でも読み取り可能、誰でも作成可能
+-- RLS: SELECT は公開。INSERT は publish-drawing-line-chart-quiz（service role）が行う。
+-- クライアント anon INSERT は使わない。
 ALTER TABLE quiz_quizzes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can read quizzes" ON quiz_quizzes FOR SELECT USING (true);
-CREATE POLICY "Anyone can create quizzes" ON quiz_quizzes FOR INSERT WITH CHECK (true);
 ```
 
 ### quiz_responses テーブル
@@ -134,38 +137,9 @@ const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KE
 
 ## Step 4: クイズ公開（index.html）
 
-「公開」ボタンで `chart_config` を `quiz_quizzes` に保存し、クイズURLを発行する。
+「公開」は保存済みプロジェクトを `publish-drawing-line-chart-quiz` Edge Function に渡し、`quiz_quizzes` を `source_project_id` 単位で upsert する。クライアントから `quiz_quizzes` へ直接 INSERT しない。
 
-```javascript
-async function getAuthUserId() {
-  if (!window.datavizSupabase) return null;
-  const { data: { session } } = await window.datavizSupabase.auth.getSession();
-  return session?.user?.id || null;
-}
-
-async function publishQuiz() {
-  const cfg = buildConfig();
-  if (!cfg) return;
-
-  const createdBy = await getAuthUserId();
-
-  const { data, error } = await quizSupabase
-    .from("quiz_quizzes")
-    .insert({
-      title: cfg.title || "無題のクイズ",
-      chart_config: cfg,
-      created_by: createdBy,
-    })
-    .select("id")
-    .single();
-
-  if (error) throw error;
-
-  // クイズURLを生成
-  const quizUrl = `${location.origin}/quiz.html?id=${data.id}`;
-  // ダイアログで表示...
-}
-```
+実装は `index.html` の `publishQuizFromProject()` と `supabase/functions/publish-drawing-line-chart-quiz/index.ts` を正とする。`created_by` は Edge Function が JWT の `sub` から入れる。
 
 ## Step 5: クイズ回答（quiz.html）
 
@@ -317,7 +291,7 @@ const { data: response } = await quizSupabase
   .single();
 
 const cfg = { ...response.quiz_quizzes.chart_config, id: responseId };
-const chart = new ChartInstance(containerEl, cfg);
+const chart = new ChartInstance(containerEl, cfg, { mode: "static", breakpoints: "public" });
 chart.renderPrediction(response.prediction_data);
 ```
 
@@ -328,7 +302,8 @@ chart.renderPrediction(response.prediction_data);
 | クイズ作成 | `/index.html` | なし |
 | クイズ回答 | `/quiz.html?id={quiz_id}` | quiz_quizzes.id |
 | 結果表示 | `/share.html?id={response_id}` | quiz_responses.id |
-| OGP提供 | `{SUPABASE_URL}/functions/v1/og-share?id={response_id}` | quiz_responses.id |
+| OGP提供（結果） | `{SUPABASE_URL}/functions/v1/og-share?id={response_id}` | quiz_responses.id |
+| OGP提供（クイズ） | `{SUPABASE_URL}/functions/v1/og-drawing-line-chart-quiz?id={quiz_id}` | quiz_quizzes.id |
 | OG画像 | `{SUPABASE_URL}/storage/v1/object/public/quiz-og-images/{response_id}.png` | quiz_responses.id |
 
 ## 実装時の注意点
@@ -339,29 +314,17 @@ chart.renderPrediction(response.prediction_data);
 |------|---------------------|------|
 | ログイン/ログアウト | `window.datavizSupabase` | dataviz.jp 共通認証 |
 | プロジェクト保存/読込 | `api.dataviz.jp` REST API | dataviz.jp 共通機能 |
-| クイズ公開/回答/シェア | `quizSupabase` | 本ツール独自の機能 |
-| クイズ作成者の記録 | `datavizSupabase` → `quizSupabase` | 公開時に `datavizSupabase` からユーザーIDを取得し、`quiz_quizzes.created_by` に記録 |
+| クイズ公開 | `publish-drawing-line-chart-quiz` | 保存済みプロジェクトから `quiz_quizzes` を upsert。`created_by` は JWT `sub` |
+| クイズ回答/結果閲覧 | `quizSupabase` | `quiz_quizzes` / `quiz_responses` の SELECT と回答 INSERT |
 
 ### RLSポリシー
 
-クイズは認証なしで回答・閲覧できる必要があるため、`anon` ロールに SELECT / INSERT を許可する。
+`quiz_quizzes` の SELECT は公開。INSERT は publish Edge Function の service role のみ。`quiz_responses` の SELECT / INSERT は回答者向けに anon へ開く。
 
 ### created_by（クイズ作成者）の記録
 
-`quiz_quizzes.created_by` には `datavizSupabase.auth.getSession()` から取得したユーザーID（UUID）を格納する。同じ Supabase プロジェクト内の `auth.users(id)` への外部キー制約が設定されている。
-
-- ログイン済みユーザーが公開すると、`created_by` にユーザーIDが記録される
-- 未ログイン状態（通常はサブスクチェックにより到達しない）の場合は `NULL` が入る
-- `quizSupabase` クライアントは anon キーで動作するため、`created_by` の値はアプリケーション層で設定する（RLS の `auth.uid()` ではない）
+`quiz_quizzes.created_by` は `publish-drawing-line-chart-quiz` がアクセストークンの `sub` から書く。クライアントが `created_by` を直接セットする経路は使わない。
 
 ### ResizeObserver との共存
 
-share.html で `ResizeObserver` を使う場合、`_render()` の再実行で `renderPrediction()` の描画が消える問題に注意。prediction data を保持し、再描画後に自動で再適用する仕組みが必要。
-
-```javascript
-this._predictionData = null;
-this._ro = new ResizeObserver(() => {
-  this._render();
-  if (this._predictionData) this.renderPrediction(this._predictionData);
-});
-```
+`ChartInstance` が描画状態（ユーザー線 / 保存済み予測）を `_render()` の外に持ち、リサイズ後に再適用する。ページ側で二重に ResizeObserver を組む必要はない。

@@ -30,6 +30,7 @@
 <!-- D3.js -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="d3.sketchy.js"></script>
+<link rel="stylesheet" href="ydi-chart.css">
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -62,52 +63,11 @@ body {
   font-size: 1rem;
 }
 
-/* --- Chart styles --- */
-.ydi-chart-wrap { margin-bottom: 0; position: relative; background: #fff; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-.ydi-chart-wrap h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 12px; line-height: 1.4; text-align: center; }
-.ydi-chart-wrap svg { display: block; margin: 0 auto; overflow: visible; font: 600 13px/1.2 'Klee One', cursive; }
-.ydi-grid line { stroke: #e0e0e0; stroke-width: 1; shape-rendering: crispEdges; }
-.ydi-chart-wrap .axis path, .ydi-chart-wrap .axis line { stroke: #ccc; shape-rendering: crispEdges; }
-.ydi-chart-wrap .axis text { fill: #888; font-size: 12px; }
-.ydi-known-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.ydi-actual-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.ydi-area { opacity: 0.12; }
-.ydi-user-line { fill: none; stroke-width: 3; stroke-dasharray: 1 7; stroke-linecap: round; }
-.ydi-annotations rect { pointer-events: none; }
-.ydi-annotations text { pointer-events: none; }
-.ydi-value-label { font-size: 13px; font-weight: 700; }
-.ydi-divider { stroke: #ccc; stroke-width: 1; stroke-dasharray: 4 3; shape-rendering: crispEdges; }
-.ydi-legend-label { font-size: 12px; font-weight: 600; }
-
-/* --- Sketchy style overrides --- */
-.ydi-chart-wrap.ydi-sketchy { background: #fffdf7; border-radius: 4px; box-shadow: 2px 3px 12px rgba(0,0,0,0.1); transform: rotate(-0.3deg); }
-.ydi-chart-wrap.ydi-sketchy h2 { font-family: 'Klee One', cursive; font-size: 1.3rem; }
-.ydi-chart-wrap.ydi-sketchy svg { font: 300 14px/1.2 'Klee One', cursive; }
-.ydi-chart-wrap.ydi-sketchy .ydi-grid line { stroke: #c8ddf0; stroke-width: 0.8; opacity: 0.6; }
-.ydi-chart-wrap.ydi-sketchy .axis path, .ydi-chart-wrap.ydi-sketchy .axis .domain { display: none; }
-.ydi-chart-wrap.ydi-sketchy .axis .tick line { stroke: #bbb; stroke-width: 0.5; }
-.ydi-chart-wrap.ydi-sketchy .axis text { fill: #555; font-size: 14px; font-family: 'Klee One', cursive; }
-.ydi-chart-wrap.ydi-sketchy .ydi-value-label { font-family: 'Klee One', cursive; font-size: 14px; }
-.ydi-chart-wrap.ydi-sketchy .ydi-legend-label { font-family: 'Klee One', cursive; font-size: 13px; }
-.ydi-button-area { display: none; }
-.ydi-after-reveal { display: none; }
-
 /* Score + CTA */
 .dvz-result {
   text-align: center;
   margin-top: 24px;
 }
-.ydi-score {
-  display: inline-block;
-  margin-top: 4px;
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-.ydi-score-good { background: #d4edda; color: #155724; }
-.ydi-score-ok   { background: #fff3cd; color: #856404; }
-.ydi-score-off  { background: #f8d7da; color: #721c24; }
 
 .dvz-cta {
   text-align: center;
@@ -164,17 +124,11 @@ body {
 /* タブレット */
 @media (max-width: 768px) {
   .dvz-app { padding: 24px 12px 16px; }
-  .ydi-chart-wrap h2 { font-size: 1.05rem; }
-  .ydi-chart-wrap.ydi-sketchy h2 { font-size: 1.2rem; }
 }
 
 /* スマートフォン */
 @media (max-width: 480px) {
   .dvz-app { padding: 20px 8px 12px; }
-  .ydi-chart-wrap h2 { font-size: 1rem; }
-  .ydi-chart-wrap.ydi-sketchy h2 { font-size: 1.1rem; }
-  .ydi-value-label { font-size: 11px; }
-  .ydi-chart-wrap.ydi-sketchy .ydi-value-label { font-size: 12px; }
   .dvz-cta a, .dvz-cta button { font-size: 0.9rem; padding: 10px 24px; }
 }
 </style>
@@ -194,6 +148,9 @@ body {
 </div>
 
 <script type="module">
+import { ChartInstance } from "./ydi-chart.js";
+import { downloadChartPng } from "./ydi-export.js";
+
 // ============================================================
 //  Share Page — 描いて答える折れ線グラフ（静的表示）
 // ============================================================
@@ -291,432 +248,6 @@ const SUPABASE_URL = "https://vebhoeiltxspsurqoxvl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_sAjwbAhC0jnIRjNa34QuTA_CcksMYQG";
 const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ---- チャート設定 ----
-const DEFAULTS = {
-  unit: "", yFormat: ",.0f", precision: 0, yExtent: 1.5, height: 300,
-  margin: { top: 20, right: 130, bottom: 40, left: 55 },
-  colors: { known: "#7570b3", actual: "#1b9e77", user: "#d95f02" },
-  buttonText: "答え合わせ",
-  drawPrompt: ["線を描いて", "予想してみよう"],
-  afterRevealHTML: "",
-};
-
-function clamp(min, max, val) { return Math.max(min, Math.min(max, val)); }
-
-function sketchyLinePath(points) {
-  const result = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const [x0, y0] = points[i];
-    const [x1, y1] = points[i + 1];
-    const steps = 8;
-    for (let j = 0; j <= steps; j++) {
-      const t = j / steps;
-      const jitterScale = Math.sin(t * Math.PI) * 2.5;
-      result.push([
-        x0 + (x1 - x0) * t + (Math.random() - 0.5) * jitterScale,
-        y0 + (y1 - y0) * t + (Math.random() - 0.5) * jitterScale,
-      ]);
-    }
-  }
-  return d3.line().curve(d3.curveBasis)(result);
-}
-
-let _fontCSSCache = null;
-let _fontBlocksCache = null;
-async function getFontCSS() {
-  if (!_fontCSSCache) {
-    const res = await fetch("https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap");
-    _fontCSSCache = await res.text();
-  }
-  return _fontCSSCache;
-}
-async function embedFontForChars(chars) {
-  const cssText = await getFontCSS();
-  if (!_fontBlocksCache) {
-    _fontBlocksCache = [];
-    const blocks = cssText.split(/(?=\/\*)/);
-    for (const block of blocks) {
-      const rangeMatch = block.match(/unicode-range:\s*([^;]+);/);
-      const urlMatch = block.match(/url\((https:\/\/[^)]+)\)/);
-      if (rangeMatch && urlMatch) {
-        const ranges = rangeMatch[1].split(",").map(s => s.trim());
-        _fontBlocksCache.push({ ranges, url: urlMatch[1], block });
-      }
-    }
-  }
-  const needed = _fontBlocksCache.filter(fb => {
-    return fb.ranges.some(range => {
-      const m = range.match(/U\+([0-9A-Fa-f]+)(?:-([0-9A-Fa-f]+))?/);
-      if (!m) return false;
-      const lo = parseInt(m[1], 16), hi = m[2] ? parseInt(m[2], 16) : lo;
-      return chars.some(c => { const cp = c.codePointAt(0); return cp >= lo && cp <= hi; });
-    });
-  });
-  let result = "";
-  for (const fb of needed) {
-    const res = await fetch(fb.url);
-    const buf = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    result += fb.block.replace(fb.url, "data:font/woff2;base64," + btoa(bin)) + "\n";
-  }
-  return result;
-}
-
-async function downloadChartPng(svgEl, title) {
-  if (!svgEl) return;
-  const clone = svgEl.cloneNode(true);
-  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  const inlineStyles = (srcEl, cloneEl) => {
-    const computed = window.getComputedStyle(srcEl);
-    ["fill","stroke","stroke-width","stroke-dasharray","stroke-linecap",
-     "stroke-linejoin","opacity","fill-opacity","stroke-opacity","font-family",
-     "font-size","font-weight","text-anchor","display","visibility"].forEach(prop => {
-      const val = computed.getPropertyValue(prop);
-      if (val) cloneEl.style.setProperty(prop, val);
-    });
-    for (let i = 0; i < srcEl.children.length; i++) {
-      if (cloneEl.children[i]) inlineStyles(srcEl.children[i], cloneEl.children[i]);
-    }
-  };
-  inlineStyles(svgEl, clone);
-  clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
-  const allText = clone.textContent || "";
-  const chars = [...new Set(allText.split(""))];
-  const fontCSS = await embedFontForChars(chars);
-  if (fontCSS) {
-    const styleEl = document.createElementNS("http://www.w3.org/2000/svg", "style");
-    styleEl.textContent = fontCSS;
-    clone.insertBefore(styleEl, clone.firstChild);
-  }
-  const svgData = new XMLSerializer().serializeToString(clone);
-  const svgW = parseFloat(svgEl.getAttribute("width")) || 640;
-  const svgH = parseFloat(svgEl.getAttribute("height")) || 400;
-  const canvas = document.createElement("canvas");
-  canvas.width = svgW * 2;
-  canvas.height = svgH * 2;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const img = new Image();
-  const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  img.onload = () => {
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    URL.revokeObjectURL(url);
-    const a = document.createElement("a");
-    a.download = (title || "chart") + ".png";
-    a.href = canvas.toDataURL("image/png");
-    a.click();
-  };
-  img.src = url;
-}
-
-function drawSketchyCircle(parent, cx, cy, r, fillColor) {
-  const dot = d3.sketchy.circle();
-  dot.radius(r).cx(cx).cy(cy).fill(fillColor).stroke(fillColor).strokeWidth(6);
-  parent.append("g").call(dot);
-}
-
-function resolveVerticalOverlaps(items, minGap) {
-  if (items.length < 2) return;
-  items.sort((a, b) => a.y - b.y);
-  for (let i = 1; i < items.length; i++) {
-    const prev = items[i - 1];
-    const curr = items[i];
-    const overlap = (prev.y + prev.height + minGap) - curr.y;
-    if (overlap > 0) {
-      curr.y = prev.y + prev.height + minGap;
-      if (curr.el) curr.el.attr("y", curr.y);
-      if (curr.legendG) curr.legendG.attr("transform", `translate(${curr.legendX},${curr.y})`);
-    }
-  }
-}
-
-function mergeConfig(cfg) {
-  return { ...DEFAULTS, ...cfg, margin: { ...DEFAULTS.margin, ...(cfg.margin || {}) }, colors: { ...DEFAULTS.colors, ...(cfg.colors || {}) } };
-}
-
-// ---- ChartInstance (静的表示版) ----
-class ChartInstance {
-  constructor(parentEl, rawConfig) {
-    this.cfg = mergeConfig(rawConfig);
-    this.parentEl = parentEl;
-    this._buildDOM();
-    this._render();
-  }
-
-  _buildDOM() {
-    const { cfg } = this;
-    const wrap = document.createElement("div");
-    wrap.className = "ydi-chart-wrap" + (cfg.style === "sketchy" ? " ydi-sketchy" : "");
-    wrap.id = `ydi-${cfg.id}`;
-
-    const h2 = document.createElement("h2");
-    h2.textContent = cfg.title;
-    wrap.appendChild(h2);
-
-    const svgContainer = document.createElement("div");
-    svgContainer.className = "ydi-svg-container";
-    wrap.appendChild(svgContainer);
-
-    const buttonArea = document.createElement("div");
-    buttonArea.className = "ydi-button-area";
-    wrap.appendChild(buttonArea);
-
-    const afterReveal = document.createElement("div");
-    afterReveal.className = "ydi-after-reveal";
-    wrap.appendChild(afterReveal);
-
-    this.parentEl.appendChild(wrap);
-    this.wrapEl = wrap;
-    this.svgContainer = svgContainer;
-
-    this._predictionData = null;
-    this._ro = new ResizeObserver(() => {
-      this._render();
-      if (this._predictionData) this.renderPrediction(this._predictionData);
-    });
-    this._ro.observe(this.svgContainer);
-  }
-
-  _render() {
-    const { cfg } = this;
-    const isMobile = window.innerWidth < 480;
-    const isTablet = window.innerWidth < 768;
-    this.svgContainer.replaceChildren();
-
-    const totalWidth = this.svgContainer.offsetWidth || 560;
-    const margin = { ...cfg.margin };
-    if (isMobile) { margin.right = 70; margin.left = 40; }
-    else if (isTablet) { margin.right = 90; margin.left = 45; }
-    const width = totalWidth - margin.left - margin.right;
-    const height = cfg.height;
-
-    const data = cfg.data;
-    const startX = data[0].x;
-    const endX = data[data.length - 1].x;
-    const drawStartX = cfg.drawStartX;
-    const drawStartIndex = data.findIndex(d => d.x >= drawStartX);
-    const xStep = data.length > 1 ? data[1].x - data[0].x : 1;
-
-    const xScale = d3.scaleLinear().domain([startX, endX]).range([0, width]);
-    const yMin = d3.min(data, d => d.y);
-    const yMax = d3.max(data, d => d.y);
-    const yPad = (yMax - yMin) * (cfg.yExtent - 1) || 1;
-    const yDomainMin = yMin >= 0 ? 0 : yMin - yPad;
-    const yDomainMax = yMax + yPad;
-    const yScale = d3.scaleLinear().domain([yDomainMin, yDomainMax]).nice().range([height, 0]);
-
-    const svg = d3.select(this.svgContainer).append("svg")
-      .attr("width", totalWidth)
-      .attr("height", height + margin.top + margin.bottom)
-      .attr("viewBox", `0 0 ${totalWidth} ${height + margin.top + margin.bottom}`);
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
-    this.svg = svg; this.g = g; this.xScale = xScale; this.yScale = yScale;
-    this.width = width; this.height = height; this.margin = margin;
-
-    // Grid
-    const gridG = g.append("g").attr("class", "ydi-grid");
-    gridG.selectAll("line.v").data(data.map(d => d.x)).join("line")
-      .attr("x1", d => xScale(d)).attr("x2", d => xScale(d)).attr("y1", 0).attr("y2", height);
-    gridG.selectAll("line.h").data(yScale.ticks(5)).join("line")
-      .attr("x1", 0).attr("x2", width).attr("y1", d => yScale(d)).attr("y2", d => yScale(d));
-
-    // Annotation backgrounds
-    const annLabels = [];
-    if (cfg.annotations && cfg.annotations.length > 0) {
-      const annG = g.append("g").attr("class", "ydi-annotations");
-      const sortedAnns = [...cfg.annotations].sort((a, b) => a.startX - b.startX);
-      sortedAnns.forEach((ann, i) => {
-        const x1 = Math.max(0, xScale(ann.startX));
-        const x2 = Math.min(width, xScale(ann.endX));
-        const w = x2 - x1;
-        if (w <= 0) return;
-        annG.append("rect")
-          .attr("x", x1).attr("y", 0)
-          .attr("width", w).attr("height", height)
-          .attr("fill", "#000").attr("opacity", i % 2 === 0 ? 0.04 : 0.08);
-        if (ann.label) annLabels.push({ x: (x1 + x2) / 2, label: ann.label });
-      });
-    }
-
-    const yFmt = d3.format(cfg.yFormat);
-
-    // X axis
-    g.append("g").attr("class", "axis x-axis").attr("transform", `translate(0,${height})`)
-      .call(d3.axisBottom(xScale)
-        .tickValues((() => {
-            const allX = data.map(d => d.x);
-            const tickWidth = cfg.xFormat === "yyyymm" ? 70 : 40;
-            const maxTicks = Math.max(2, Math.floor(width / tickWidth));
-            const step = Math.max(1, Math.ceil(allX.length / maxTicks));
-            return allX.filter((_, i) => i % step === 0 || i === allX.length - 1);
-          })())
-        .tickFormat(d => {
-            if (cfg.xFormat === "yyyymm") {
-              const y = Math.floor(d);
-              const m = Math.round((d - y) * 12) + 1;
-              return y + "/" + String(m).padStart(2, "0");
-            }
-            return d === startX ? d : "'" + String(d).slice(-2);
-          }).tickSize(6))
-      .select(".domain").remove();
-
-    // Y labels
-    g.selectAll(".ydi-y-label").data(yScale.ticks(5)).join("text")
-      .attr("class", "ydi-y-label").attr("x", -5).attr("y", d => yScale(d))
-      .attr("dy", "0.35em").attr("text-anchor", "end").attr("fill", "#888").attr("font-size", 11)
-      .text(d => yFmt(d));
-
-    // Divider
-    g.append("line").attr("class", "ydi-divider")
-      .attr("x1", xScale(drawStartX)).attr("x2", xScale(drawStartX)).attr("y1", 0).attr("y2", height);
-
-    const line = d3.line().x(d => xScale(d.x)).y(d => yScale(d.y));
-    const sketchy = cfg.style === "sketchy";
-    const toPoints = (arr) => arr.map(d => [xScale(d.x), yScale(d.y)]);
-
-    // Known line
-    const knownData = data.filter(d => d.x <= drawStartX);
-    if (sketchy) {
-      const kPts = toPoints(knownData);
-      g.append("path").attr("class", "ydi-known-line")
-        .attr("d", sketchyLinePath(kPts)).attr("stroke", d3.sketchy.randomColor(cfg.colors.known, 0.03))
-        .style("stroke-width", 3.5).style("opacity", 0.35);
-      g.append("path").attr("class", "ydi-known-line")
-        .attr("d", sketchyLinePath(kPts)).attr("stroke", d3.sketchy.randomColor(cfg.colors.known, 0.03))
-        .style("stroke-width", 2).style("opacity", 0.85);
-    } else {
-      g.append("path").attr("class", "ydi-known-line").attr("d", line(knownData)).attr("stroke", cfg.colors.known);
-    }
-
-    // Actual line (fully visible)
-    const actualData = data.filter(d => d.x >= drawStartX);
-    if (sketchy) {
-      const aPts = toPoints(actualData);
-      g.append("path").attr("class", "ydi-actual-line")
-        .attr("d", sketchyLinePath(aPts)).attr("stroke", d3.sketchy.randomColor(cfg.colors.actual, 0.03))
-        .style("stroke-width", 3.5).style("opacity", 0.35);
-      g.append("path").attr("class", "ydi-actual-line")
-        .attr("d", sketchyLinePath(aPts)).attr("stroke", d3.sketchy.randomColor(cfg.colors.actual, 0.03))
-        .style("stroke-width", 2).style("opacity", 0.85);
-    } else {
-      g.append("path").attr("class", "ydi-actual-line").attr("d", line(actualData)).attr("stroke", cfg.colors.actual);
-    }
-
-    // End point
-    const endPt = data[data.length - 1];
-    if (sketchy) {
-      drawSketchyCircle(g, xScale(endPt.x), yScale(endPt.y), 4, cfg.colors.actual);
-    } else {
-      g.append("circle").attr("cx", xScale(endPt.x)).attr("cy", yScale(endPt.y)).attr("r", 5).attr("fill", cfg.colors.actual);
-    }
-    this.actualEndLabelEl = g.append("text").attr("class", "ydi-value-label").attr("x", xScale(endPt.x) + 10)
-      .attr("y", yScale(endPt.y)).attr("dy", "0.35em").attr("fill", cfg.colors.actual).text(yFmt(endPt.y) + cfg.unit);
-
-    // Start & mid markers
-    const startPt = data[0];
-    if (sketchy) {
-      drawSketchyCircle(g, xScale(startPt.x), yScale(startPt.y), 4, cfg.colors.known);
-    } else {
-      g.append("circle").attr("cx", xScale(startPt.x)).attr("cy", yScale(startPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
-    }
-    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(startPt.x)).attr("y", yScale(startPt.y) - 12)
-      .attr("text-anchor", "middle").attr("fill", cfg.colors.known).text(yFmt(startPt.y) + cfg.unit);
-
-    const midPt = data[drawStartIndex];
-    if (sketchy) {
-      drawSketchyCircle(g, xScale(midPt.x), yScale(midPt.y), 4, cfg.colors.known);
-    } else {
-      g.append("circle").attr("cx", xScale(midPt.x)).attr("cy", yScale(midPt.y)).attr("r", 5).attr("fill", cfg.colors.known);
-    }
-    const midLabelDy = drawStartIndex > 0 && midPt.y > data[drawStartIndex - 1].y ? -12 : 16;
-    g.append("text").attr("class", "ydi-value-label").attr("x", xScale(midPt.x) - 8)
-      .attr("y", yScale(midPt.y) + midLabelDy).attr("text-anchor", "end").attr("fill", cfg.colors.known)
-      .text(yFmt(midPt.y) + cfg.unit);
-
-    // Annotation labels
-    annLabels.forEach(a => {
-      g.append("text").attr("class", "ydi-annotation-label")
-        .attr("x", a.x).attr("y", 12)
-        .attr("text-anchor", "middle")
-        .attr("fill", "#888").attr("font-size", 11)
-        .text(a.label);
-    });
-
-    this.yFmt = yFmt;
-    this.data = data;
-    this.drawStartX = drawStartX;
-    this.endX = endX;
-  }
-
-  renderPrediction(predictionData) {
-    this._predictionData = predictionData;
-    const { xScale, yScale, g, cfg, width } = this;
-
-    const sketchy = cfg.style === "sketchy";
-    const validPts = predictionData.filter(d => d.prediction != null);
-    if (sketchy) {
-      const userPts = validPts.map(d => [xScale(d.x), yScale(d.prediction)]);
-      if (userPts.length > 1) {
-        g.append("path").attr("class", "ydi-user-line")
-          .attr("d", sketchyLinePath(userPts)).attr("stroke", d3.sketchy.randomColor(cfg.colors.user, 0.03))
-          .style("stroke-width", 3.5).style("opacity", 0.35).style("stroke-dasharray", "none");
-        g.append("path").attr("class", "ydi-user-line")
-          .attr("d", sketchyLinePath(userPts)).attr("stroke", d3.sketchy.randomColor(cfg.colors.user, 0.03))
-          .style("stroke-width", 2).style("opacity", 0.85).style("stroke-dasharray", "none");
-      }
-    } else {
-      const userLine = d3.line().defined(d => d.prediction != null).x(d => xScale(d.x)).y(d => yScale(d.prediction));
-      g.append("path").attr("class", "ydi-user-line").attr("d", userLine(predictionData)).attr("stroke", cfg.colors.user);
-    }
-
-    const lastPt = predictionData[predictionData.length - 1];
-    if (lastPt) {
-      if (sketchy) {
-        drawSketchyCircle(g, xScale(lastPt.x), yScale(lastPt.prediction), 4, cfg.colors.user);
-      } else {
-        g.append("circle").attr("cx", xScale(lastPt.x)).attr("cy", yScale(lastPt.prediction)).attr("r", 5).attr("fill", cfg.colors.user);
-      }
-
-      const displayVal = cfg.precision
-        ? this.yFmt(parseFloat(lastPt.prediction.toFixed(cfg.precision)))
-        : this.yFmt(lastPt.prediction);
-
-      const endPt = this.data[this.data.length - 1];
-      const userLabelEl = g.append("text").attr("class", "ydi-value-label").attr("x", xScale(lastPt.x) + 10)
-        .attr("y", yScale(lastPt.prediction)).attr("dy", "0.35em").attr("fill", cfg.colors.user)
-        .text(displayVal + cfg.unit);
-
-      // Legend
-      const legendX = width + 12;
-      const chartHeight = this.height;
-      const legendG = g.append("g").attr("class", "ydi-legend").style("opacity", 1)
-        .attr("transform", `translate(${legendX},${chartHeight - 40})`);
-      legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 0).attr("y2", 0)
-        .attr("stroke", cfg.colors.user).attr("stroke-width", 3).attr("stroke-dasharray", "1 7").attr("stroke-linecap", "round");
-      legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 0)
-        .attr("dy", "0.35em").attr("fill", cfg.colors.user).text(t('legendPrediction'));
-      legendG.append("line").attr("x1", 0).attr("x2", 20).attr("y1", 22).attr("y2", 22)
-        .attr("stroke", cfg.colors.actual).attr("stroke-width", 3).attr("stroke-linecap", "round");
-      legendG.append("text").attr("class", "ydi-legend-label").attr("x", 26).attr("y", 22)
-        .attr("dy", "0.35em").attr("fill", cfg.colors.actual).text(t('legendActual'));
-
-      const actualEndY = yScale(endPt.y);
-      const userEndY = yScale(lastPt.prediction);
-      const labelItems = [
-        { y: actualEndY, height: 14, el: this.actualEndLabelEl, id: "actual" },
-        { y: userEndY, height: 14, el: userLabelEl, id: "user" },
-        { y: chartHeight - 40, height: 40, legendG, legendX, id: "legend" },
-      ];
-      resolveVerticalOverlaps(labelItems, 4);
-    }
-  }
-}
-
-
 // ---- 初期化 ----
 async function init() {
   const loadingEl = document.getElementById("dvz-loading");
@@ -784,7 +315,14 @@ async function init() {
     contentEl.style.display = "block";
     resultEl.style.display = "block";
 
-    const chart = new ChartInstance(contentEl, cfg);
+    const chart = new ChartInstance(contentEl, cfg, {
+      mode: "static",
+      breakpoints: "public",
+      labels: {
+        legendPrediction: t('legendPrediction'),
+        legendActual: t('legendActual'),
+      },
+    });
     chart.renderPrediction(response.prediction_data);
 
     // Score badge + CTA (XSS-safe: textContent for user data)
