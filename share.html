@@ -30,108 +30,9 @@
 <!-- D3.js -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="d3.sketchy.js"></script>
+<link rel="stylesheet" href="ydi-page.css">
 <link rel="stylesheet" href="ydi-chart.css">
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap" rel="stylesheet">
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #333;
-  background-color: #eff3ff;
-  background-image: url("data:image/svg+xml,%3Csvg width='64' height='64' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 16c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm0-2c3.314 0 6-2.686 6-6s-2.686-6-6-6-6 2.686-6 6 2.686 6 6 6zm33.414-6l5.95-5.95L45.95.636 40 6.586 34.05.636 32.636 2.05 38.586 8l-5.95 5.95 1.414 1.414L40 9.414l5.95 5.95 1.414-1.414L41.414 8zM40 48c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm0-2c3.314 0 6-2.686 6-6s-2.686-6-6-6-6 2.686-6 6 2.686 6 6 6zM9.414 40l5.95-5.95-1.414-1.414L8 38.586l-5.95-5.95L.636 34.05 6.586 40l-5.95 5.95 1.414 1.414L8 41.414l5.95 5.95 1.414-1.414L9.414 40z' fill='%23bdd7e7' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E");
-  line-height: 1.6;
-}
-
-.dvz-app {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 32px 16px 20px;
-}
-
-#dvz-loading {
-  text-align: center;
-  padding: 80px 20px;
-  color: #999;
-  font-size: 1rem;
-}
-
-#dvz-error {
-  text-align: center;
-  padding: 80px 20px;
-  color: #c00;
-  font-size: 1rem;
-}
-
-/* Score + CTA */
-.dvz-result {
-  text-align: center;
-  margin-top: 24px;
-}
-
-.dvz-cta {
-  text-align: center;
-  margin-top: 20px;
-}
-
-.dvz-cta a, .dvz-cta button {
-  display: inline-block;
-  padding: 12px 32px;
-  min-height: 44px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
-  background: #333;
-  border: none;
-  border-radius: 4px;
-  text-decoration: none;
-  transition: background 0.2s;
-  cursor: pointer;
-}
-.dvz-cta a:hover, .dvz-cta button:hover { background: #555; }
-
-.dvz-site-links {
-  text-align: center;
-  margin-top: 32px;
-  padding: 16px 0;
-  font-size: 0.8rem;
-  color: #999;
-}
-.dvz-site-links a {
-  color: #888;
-  text-decoration: none;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-.dvz-site-links a:hover { color: #555; text-decoration: underline; }
-.dvz-site-links span { margin: 0 6px; color: #ccc; }
-
-/* ---- Embed mode ---- */
-.dvz-embed body {
-  background-color: transparent;
-  background-image: none;
-}
-.dvz-embed .dvz-site-links {
-  display: none;
-}
-.dvz-embed .dvz-app {
-  padding: 16px 12px;
-}
-
-/* ---- レスポンシブ ---- */
-
-/* タブレット */
-@media (max-width: 768px) {
-  .dvz-app { padding: 24px 12px 16px; }
-}
-
-/* スマートフォン */
-@media (max-width: 480px) {
-  .dvz-app { padding: 20px 8px 12px; }
-  .dvz-cta a, .dvz-cta button { font-size: 0.9rem; padding: 10px 24px; }
-}
-</style>
 </head>
 <body>
 
@@ -150,16 +51,16 @@ body {
 <script type="module">
 import { ChartInstance } from "./ydi-chart.js";
 import { downloadChartPng } from "./ydi-export.js";
+import { createQuizClient, quizPageUrl, resultPageUrl, resultOgPath, ogPublicUrl } from "./ydi-config.js";
+import {
+  createI18n, setupEmbedMode, fillSiteLinks, showLoading, hideLoading, showPageError, startLoadTimeout,
+} from "./ydi-public.js";
 
 // ============================================================
-//  Share Page — 描いて答える折れ線グラフ（静的表示）
+//  Share Page — 描いて答える折れ線グラフ（回答結果の静的表示）
 // ============================================================
 
-// ---- i18n ----
-const LANG = navigator.language.startsWith('ja') ? 'ja' : 'en';
-document.documentElement.lang = LANG;
-
-const TRANSLATIONS = {
+const { t } = createI18n({
   ja: {
     loading: '読み込み中...',
     noId: '回答IDが指定されていません',
@@ -194,124 +95,91 @@ const TRANSLATIONS = {
     resultLabel: 'Result',
     toolName: 'Draw & Predict Line Chart',
   }
-};
+});
 
-function t(key) {
-  return TRANSLATIONS[LANG]?.[key] ?? TRANSLATIONS.en[key] ?? key;
-}
+setupEmbedMode();
+showLoading(t('loading'));
+fillSiteLinks(t('toolName'));
 
-// ---- ユーティリティ ----
+const quizSupabase = createQuizClient();
+
 function setMeta(property, content) {
   const el = document.querySelector(`meta[property="${property}"]`)
           || document.querySelector(`meta[name="${property}"]`);
   if (el) el.setAttribute('content', content);
 }
 
-// ---- Embed mode ----
-const IS_EMBED = new URLSearchParams(location.search).get('embed') === '1';
-
-if (IS_EMBED) {
-  document.documentElement.classList.add('dvz-embed');
-
-  const postHeight = () => {
-    window.parent.postMessage(
-      { type: 'dvz-resize', height: document.documentElement.scrollHeight },
-      '*'
-    );
-  };
-  new ResizeObserver(postHeight).observe(document.body);
-  window.addEventListener('load', postHeight);
-
-  const retargetLinks = () => {
-    document.querySelectorAll('a[href]:not([target="_blank"])').forEach(a => {
-      if (!a.href.startsWith('javascript:')) {
-        a.target = '_blank';
-        a.rel = 'noopener';
-      }
-    });
-  };
-  retargetLinks();
-  new MutationObserver(retargetLinks).observe(document.body, { childList: true, subtree: true });
+function updateOgpMeta(responseId, ogTitle) {
+  const ogImageUrl = ogPublicUrl(resultOgPath(responseId));
+  setMeta("og:title", ogTitle);
+  setMeta("og:description", t('ogDesc'));
+  setMeta("og:site_name", t('ogSiteName'));
+  setMeta("og:url", resultPageUrl(responseId));
+  setMeta("og:image", ogImageUrl);
+  setMeta("twitter:title", ogTitle);
+  setMeta("twitter:description", t('ogDesc'));
+  setMeta("twitter:image", ogImageUrl);
 }
 
-// ---- UI初期化 ----
-function initializeUI() {
-  document.getElementById('dvz-loading').textContent = t('loading');
-  document.querySelector('.dvz-site-links a:first-child').textContent = t('toolName');
+function scoreClass(totalError) {
+  if (totalError < 0.5) return "ydi-score-good";
+  if (totalError >= 2) return "ydi-score-off";
+  return "ydi-score-ok";
 }
 
-initializeUI();
+// スコアバッジ + CTA（ユーザー由来の文字列は textContent）
+function renderResult(resultEl, response, quiz, getSvg) {
+  const scoreEl = document.createElement("div");
+  scoreEl.className = `ydi-score ${scoreClass(response.total_error)}`;
+  scoreEl.textContent = response.score_label || t('answered');
 
-// ---- Supabase ----
-const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
-const SUPABASE_URL = "https://vebhoeiltxspsurqoxvl.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_sAjwbAhC0jnIRjNa34QuTA_CcksMYQG";
-const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const ctaLink = document.createElement("a");
+  ctaLink.href = quizPageUrl(quiz.id);
+  ctaLink.textContent = t('trySelf');
+
+  const downloadBtn = document.createElement("button");
+  downloadBtn.className = "dvz-btn-secondary";
+  downloadBtn.textContent = t('saveImage');
+  downloadBtn.addEventListener("click", () => downloadChartPng(getSvg(), quiz.title));
+
+  const ctaDiv = document.createElement("div");
+  ctaDiv.className = "dvz-cta";
+  ctaDiv.append(ctaLink, downloadBtn);
+
+  resultEl.append(scoreEl, ctaDiv);
+}
 
 // ---- 初期化 ----
 async function init() {
-  const loadingEl = document.getElementById("dvz-loading");
-  const errorEl = document.getElementById("dvz-error");
   const contentEl = document.getElementById("dvz-content");
   const resultEl = document.getElementById("dvz-result");
-
-  // タイムアウト (15秒)
-  const timeout = setTimeout(() => {
-    loadingEl.style.display = "none";
-    errorEl.style.display = "block";
-    errorEl.textContent = t('timeout');
-  }, 15000);
-
-  const params = new URLSearchParams(window.location.search);
-  const responseId = params.get("id");
-
+  const responseId = new URLSearchParams(window.location.search).get("id");
   if (!responseId) {
-    clearTimeout(timeout);
-    loadingEl.style.display = "none";
-    errorEl.style.display = "block";
-    errorEl.textContent = t('noId');
+    showPageError(t('noId'));
     return;
   }
 
+  const cancelTimeout = startLoadTimeout(t('timeout'));
   try {
     const { data: response, error } = await quizSupabase
       .from("quiz_responses")
       .select("*, quiz_quizzes(*)")
       .eq("id", responseId)
       .single();
+    cancelTimeout();
 
     if (error || !response || !response.quiz_quizzes) {
-      clearTimeout(timeout);
-      loadingEl.style.display = "none";
-      errorEl.style.display = "block";
-      errorEl.textContent = t('notFound');
+      showPageError(t('notFound'));
       return;
     }
 
-    clearTimeout(timeout);
-
     const quiz = response.quiz_quizzes;
-    const cfg = { ...quiz.chart_config, id: responseId };
-    if (!cfg.title) cfg.title = quiz.title;
+    const cfg = { ...quiz.chart_config, id: responseId, title: quiz.chart_config?.title || quiz.title };
 
     document.title = quiz.title + " — " + t('resultSuffix');
+    updateOgpMeta(responseId, `${quiz.title} — ${response.score_label || t('resultLabel')}`);
 
-    // Update OGP meta tags
-    const ogImageUrl = `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/${responseId}.png`;
-    const sharePageUrl = `${DEPLOY_ORIGIN}/share.html?id=${responseId}`;
-    const ogTitle = `${quiz.title} — ${response.score_label || t('resultLabel')}`;
-
-    setMeta("og:title", ogTitle);
-    setMeta("og:description", t('ogDesc'));
-    setMeta("og:site_name", t('ogSiteName'));
-    setMeta("og:url", sharePageUrl);
-    setMeta("og:image", ogImageUrl);
-    setMeta("twitter:title", ogTitle);
-    setMeta("twitter:description", t('ogDesc'));
-    setMeta("twitter:image", ogImageUrl);
-
-    // Render chart
-    loadingEl.style.display = "none";
+    hideLoading();
     contentEl.style.display = "block";
     resultEl.style.display = "block";
 
@@ -325,42 +193,10 @@ async function init() {
     });
     chart.renderPrediction(response.prediction_data);
 
-    // Score badge + CTA (XSS-safe: textContent for user data)
-    let cls = "ydi-score-ok";
-    if (response.total_error < 0.5) cls = "ydi-score-good";
-    else if (response.total_error >= 2) cls = "ydi-score-off";
-
-    const scoreEl = document.createElement("div");
-    scoreEl.className = `ydi-score ${cls}`;
-    scoreEl.textContent = response.score_label || t('answered');
-    resultEl.appendChild(scoreEl);
-
-    const ctaDiv = document.createElement("div");
-    ctaDiv.className = "dvz-cta";
-
-    const quizUrl = `${DEPLOY_ORIGIN}/quiz.html?id=${quiz.id}`;
-    const ctaLink = document.createElement("a");
-    ctaLink.href = quizUrl;
-    ctaLink.textContent = t('trySelf');
-    ctaDiv.appendChild(ctaLink);
-
-    const downloadBtn = document.createElement("button");
-    downloadBtn.textContent = t('saveImage');
-    downloadBtn.style.background = "#666";
-    downloadBtn.style.marginLeft = "8px";
-    ctaDiv.appendChild(downloadBtn);
-
-    resultEl.appendChild(ctaDiv);
-
-    downloadBtn.addEventListener("click", () => {
-      downloadChartPng(contentEl.querySelector("svg"), quiz.title);
-    });
-
+    renderResult(resultEl, response, quiz, () => contentEl.querySelector("svg"));
   } catch (e) {
-    clearTimeout(timeout);
-    loadingEl.style.display = "none";
-    errorEl.style.display = "block";
-    errorEl.textContent = t('error');
+    cancelTimeout();
+    showPageError(t('error'));
     console.error(e);
   }
 }

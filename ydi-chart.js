@@ -1,3 +1,5 @@
+import { formatYearMonth } from "./ydi-data.js";
+
 export const DEFAULTS = {
   unit: "",
   yFormat: ",.0f",
@@ -87,11 +89,7 @@ function mergeConfig(cfg) {
 }
 
 function formatXTick(d, startX, xFormat) {
-  if (xFormat === "yyyymm") {
-    const y = Math.floor(d);
-    const m = Math.round((d - y) * 12) + 1;
-    return y + "/" + String(m).padStart(2, "0");
-  }
+  if (xFormat === "yyyymm") return formatYearMonth(d);
   return d === startX ? d : "'" + String(d).slice(-2);
 }
 
@@ -156,23 +154,24 @@ export class ChartInstance {
       buttonArea.appendChild(button);
       outerArea.appendChild(buttonArea);
 
-      const afterReveal = document.createElement("div");
-      afterReveal.className = "ydi-after-reveal";
-      if (this.sanitizeHtml) this.sanitizeHtml(afterReveal, cfg.afterRevealHTML);
-      outerArea.appendChild(afterReveal);
+      outerArea.appendChild(this._createAfterReveal());
       this.parentEl.appendChild(outerArea);
       this.outerArea = outerArea;
       this.buttonEl = button;
       this.buttonEl.addEventListener("click", () => this._reveal());
     } else if (this.mode === "interactive") {
-      const afterReveal = document.createElement("div");
-      afterReveal.className = "ydi-after-reveal";
-      if (this.sanitizeHtml) this.sanitizeHtml(afterReveal, cfg.afterRevealHTML);
-      wrap.appendChild(afterReveal);
+      wrap.appendChild(this._createAfterReveal());
     }
 
     this.wrapEl = wrap;
     this.svgContainer = svgContainer;
+  }
+
+  _createAfterReveal() {
+    const afterReveal = document.createElement("div");
+    afterReveal.className = "ydi-after-reveal";
+    if (this.sanitizeHtml) this.sanitizeHtml(afterReveal, this.cfg.afterRevealHTML);
+    return afterReveal;
   }
 
   _responsiveMargin() {
@@ -468,6 +467,12 @@ export class ChartInstance {
       }, 200);
     });
     this._resizeObserver.observe(this.svgContainer);
+  }
+
+  destroy() {
+    this._resizeObserver?.disconnect();
+    this._resizeObserver = null;
+    clearTimeout(this._resizeTimer);
   }
 
   _handleDrag(rawMx, rawMy) {

@@ -21,19 +21,10 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="d3.sketchy.js"></script>
 <script src="safe-dom.js"></script>
+<link rel="stylesheet" href="ydi-page.css">
 <link rel="stylesheet" href="ydi-chart.css">
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap" rel="stylesheet">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #333;
-  background-color: #eff3ff;
-  background-image: url("data:image/svg+xml,%3Csvg width='64' height='64' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 16c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm0-2c3.314 0 6-2.686 6-6s-2.686-6-6-6-6 2.686-6 6 2.686 6 6 6zm33.414-6l5.95-5.95L45.95.636 40 6.586 34.05.636 32.636 2.05 38.586 8l-5.95 5.95 1.414 1.414L40 9.414l5.95 5.95 1.414-1.414L41.414 8zM40 48c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm0-2c3.314 0 6-2.686 6-6s-2.686-6-6-6-6 2.686-6 6 2.686 6 6 6zM9.414 40l5.95-5.95-1.414-1.414L8 38.586l-5.95-5.95L.636 34.05 6.586 40l-5.95 5.95 1.414 1.414L8 41.414l5.95 5.95 1.414-1.414L9.414 40z' fill='%23bdd7e7' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E");
-  line-height: 1.6;
-}
-
 .you-draw-it {
   max-width: 1200px;
   margin: 0 auto;
@@ -436,150 +427,109 @@ body {
 
 <script type="module">
 import { ChartInstance } from "./ydi-chart.js";
-import { generateThumbnailDataUri, cloneChartSvg } from "./ydi-export.js";
+import { generateThumbnailDataUri, renderQuizOgPng } from "./ydi-export.js";
+import {
+  SUPABASE_URL, TOOL_NAME_JA, createQuizClient, quizPageUrl, quizOgPath, uploadOgPng,
+} from "./ydi-config.js";
+import {
+  isTimeSeriesCol, isNumericCol, detectXFormat, formatXValue, rowsToSeries, validateSeries, annotationOptions,
+} from "./ydi-data.js";
 
 // ============================================================
 //  描いて答える折れ線グラフ — 作成エディタ
 // ============================================================
 
-let uploadedData = null; // [{x, y}, ...]
-let csvRawRows = null;   // CSVの生データ（列選択変更用）
-let csvCols = null;      // CSVの列名リスト
-let currentXFormat = "year"; // "year" or "yyyymm"
-
-const {
-  appendSanitizedHtml,
-  createSingleColumnTable,
-  populateSelect,
-} = window.dvzDom;
-
-function mountChart(container, cfg) {
-  return new ChartInstance(container, cfg, { sanitizeHtml: appendSanitizedHtml });
-}
-
-// --------------- API設定 ---------------
 const APP_NAME = "drawing-line-chart";
+const NO_DATA_MESSAGE = "データをアップロードして設定を完了してください";
 
-// --------------- Quiz用Supabaseクライアント ---------------
-const SUPABASE_URL = "https://vebhoeiltxspsurqoxvl.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_sAjwbAhC0jnIRjNa34QuTA_CcksMYQG";
-const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { appendSanitizedHtml, createSingleColumnTable, populateSelect } = window.dvzDom;
+const quizSupabase = createQuizClient();
 
-// --------------- チャート描画・再描画 ---------------
+// --------------- 状態 ---------------
+let uploadedData = null;     // [{x, y}, ...]
+let csvRawRows = null;       // CSVの生データ（列選択変更用）。JSON読込・プロジェクト復元時は null
+let currentXFormat = "year"; // "year" or "yyyymm"
 let currentConfigs = [];
 let currentProjectId = null;
 let currentProjectName = null;
+let previewChart = null;
+let previewDebounce = null;
 
-// --------------- サムネイル生成 ---------------
-async function generateThumbnail() {
-  return generateThumbnailDataUri(document.querySelector(".ydi-chart-wrap svg"));
-}
+// --------------- DOM ---------------
+const byId = (id) => document.getElementById(id);
+const dropzone = byId("dropzone");
+const fileInput = byId("file-input");
+const dataSource = byId("data-source");
+const colSelectRow = byId("col-select-row");
+const colXSelect = byId("col-x");
+const colYSelect = byId("col-y");
+const dataPreview = byId("data-preview");
+const periodRow = byId("period-select-row");
+const periodStartSelect = byId("period-start");
+const periodEndSelect = byId("period-end");
+const drawStartSelect = byId("quiz-draw-start");
+const titleInput = byId("quiz-title");
+const unitInput = byId("quiz-unit");
+const styleSelect = byId("quiz-style");
+const annGranularity = byId("ann-granularity");
+const annotationsList = byId("annotations-list");
+const previewPlaceholder = byId("preview-placeholder");
+const previewSection = byId("preview-section");
+const previewContainer = byId("preview-container");
 
-// --------------- 認証 / Share helpers ---------------
-const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
+const previewSvg = () => previewContainer.querySelector(".ydi-chart-wrap svg");
 
-async function waitForDatavizAuthReady(timeoutMs = 5000) {
-  if (window.datavizSupabase) return window.datavizSupabase;
-
+// --------------- 認証 / ツールヘッダー ---------------
+function waitFor(getValue, timeoutMs, intervalMs) {
+  const value = getValue();
+  if (value) return Promise.resolve(value);
   return new Promise((resolve) => {
     const startedAt = Date.now();
-    const check = setInterval(() => {
-      if (window.datavizSupabase) {
-        clearInterval(check);
-        resolve(window.datavizSupabase);
-        return;
+    const timer = setInterval(() => {
+      const current = getValue();
+      if (current || Date.now() - startedAt >= timeoutMs) {
+        clearInterval(timer);
+        resolve(current || null);
       }
-
-      if (Date.now() - startedAt >= timeoutMs) {
-        clearInterval(check);
-        resolve(null);
-      }
-    }, 200);
+    }, intervalMs);
   });
 }
 
 async function getAccessToken() {
-  await waitForDatavizAuthReady();
-  if (!window.datavizSupabase) return null;
-  const { data: { session } } = await window.datavizSupabase.auth.getSession();
+  const client = await waitFor(() => window.datavizSupabase, 5000, 200);
+  if (!client) return null;
+  const { data: { session } } = await client.auth.getSession();
   return session?.access_token || null;
 }
 
-function getToolHeader() {
-  return document.querySelector("dataviz-tool-header");
+function getReadyToolHeader() {
+  const header = document.querySelector("dataviz-tool-header");
+  return header && typeof header.setConfig === "function" ? header : null;
 }
 
-async function waitForToolHeaderReady(timeoutMs = 5000) {
-  const current = getToolHeader();
-  if (current && typeof current.setConfig === "function") return current;
-
-  if (window.customElements && typeof window.customElements.whenDefined === "function") {
+async function waitForToolHeaderReady() {
+  if (!getReadyToolHeader() && window.customElements?.whenDefined) {
     try {
       await window.customElements.whenDefined("dataviz-tool-header");
     } catch (_error) {}
   }
-
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    const check = setInterval(() => {
-      const header = getToolHeader();
-      if (header && typeof header.setConfig === "function") {
-        clearInterval(check);
-        resolve(header);
-        return;
-      }
-
-      if (Date.now() - startedAt >= timeoutMs) {
-        clearInterval(check);
-        resolve(header || null);
-      }
-    }, 100);
-  });
+  return waitFor(getReadyToolHeader, 5000, 100);
 }
 
 function showMessage(msg, type = "info", duration) {
-  const th = getToolHeader();
-  if (th && th.showMessage) {
-    th.showMessage(msg, type, duration);
+  const header = getReadyToolHeader();
+  if (header?.showMessage) {
+    header.showMessage(msg, type, duration);
   } else {
     alert(msg);
   }
 }
 
-function showProcessingToast(msg, duration = 5000) {
-  showMessage(msg || "処理中です", "info", duration);
+function showProcessingToast(msg) {
+  showMessage(msg, "info", 5000);
 }
 
-function installHeaderProcessingToasts(header) {
-  if (!header || header.__dvzNativeProjectProcessingToasts === "1" || header.__dvzProcessingToastsInstalled === "1") return;
-
-  if (typeof header.showLoadModal === "function") {
-    const originalShowLoadModal = header.showLoadModal.bind(header);
-    header.showLoadModal = (...args) => {
-      showProcessingToast("プロジェクト一覧を読み込み中です");
-      return originalShowLoadModal(...args);
-    };
-  }
-
-  if (typeof header.loadProject === "function") {
-    const originalLoadProject = header.loadProject.bind(header);
-    header.loadProject = (...args) => {
-      showProcessingToast("プロジェクトを読み込み中です");
-      return originalLoadProject(...args);
-    };
-  }
-
-  if (typeof header.saveProject === "function") {
-    const originalSaveProject = header.saveProject.bind(header);
-    header.saveProject = (...args) => {
-      showProcessingToast("プロジェクトを保存中です");
-      return originalSaveProject(...args);
-    };
-  }
-
-  header.__dvzProcessingToastsInstalled = "1";
-}
-
+// --------------- プロジェクト保存 / シェア ---------------
 function normalizeSavedProjectMeta(meta) {
   const project = meta?.project && typeof meta.project === "object" ? meta.project : null;
   return {
@@ -598,26 +548,26 @@ function getCurrentProjectPayload() {
 async function buildEditorSavePayload() {
   const data = getCurrentProjectPayload();
   if (!data) return null;
-
-  const cfg = buildConfig();
-  const fallbackTitle = currentConfigs[0]?.title || "新しいプロジェクト";
   return {
-    name: currentProjectName || cfg?.title || fallbackTitle,
+    name: currentProjectName || data.charts[0]?.title || "新しいプロジェクト",
     data,
-    thumbnailDataUri: await generateThumbnail(),
+    thumbnailDataUri: await generateThumbnailDataUri(previewSvg()),
     existingProjectId: currentProjectId,
   };
 }
 
+async function openSaveModal(header) {
+  if (!getCurrentProjectPayload()) {
+    showMessage(NO_DATA_MESSAGE, "error");
+    return;
+  }
+  showProcessingToast("保存準備中です");
+  header.showSaveModal(await buildEditorSavePayload());
+}
+
 function getCurrentQuizShareTitle() {
-  const cfg = buildConfig();
-  const candidates = [
-    cfg?.title,
-    currentConfigs[0]?.title,
-    currentProjectName,
-    "描いて答える折れ線グラフ",
-  ];
-  return candidates.map((value) => String(value || "").trim()).find(Boolean) || "描いて答える折れ線グラフ";
+  const candidates = [buildConfig()?.title, currentConfigs[0]?.title, currentProjectName];
+  return candidates.map((value) => String(value || "").trim()).find(Boolean) || TOOL_NAME_JA;
 }
 
 function escapeHtmlAttr(value) {
@@ -628,18 +578,11 @@ function escapeHtmlAttr(value) {
     .replace(/>/g, "&gt;");
 }
 
-function buildPublicQuizUrl(quizId) {
-  return `${DEPLOY_ORIGIN}/quiz.html?id=${encodeURIComponent(quizId)}`;
-}
-
-function buildQuizEmbedSrc(quizId) {
-  return `${buildPublicQuizUrl(quizId)}&embed=1`;
-}
-
 function buildQuizIframeEmbedCode(quizId, rawTitle) {
   const resolvedTitle = String(rawTitle || "").trim();
-  const title = escapeHtmlAttr(resolvedTitle ? `${resolvedTitle} - 描いて答える折れ線グラフ` : "描いて答える折れ線グラフ");
-  return `<iframe title="${title}" src="${buildQuizEmbedSrc(quizId)}" frameborder="0" scrolling="auto" allow="fullscreen; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen="true" style="display:block;width:100%;max-width:100%;min-height:600px;border:0;margin:0 auto;padding:0;"></iframe>`;
+  const title = escapeHtmlAttr(resolvedTitle ? `${resolvedTitle} - ${TOOL_NAME_JA}` : TOOL_NAME_JA);
+  const src = `${quizPageUrl(quizId)}&embed=1`;
+  return `<iframe title="${title}" src="${src}" frameborder="0" scrolling="auto" allow="fullscreen; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen="true" style="display:block;width:100%;max-width:100%;min-height:600px;border:0;margin:0 auto;padding:0;"></iframe>`;
 }
 
 function getApiErrorMessage(payload, fallback) {
@@ -649,8 +592,8 @@ function getApiErrorMessage(payload, fallback) {
   return fallback;
 }
 
-async function publishQuizFromProject(options = {}) {
-  const projectId = String(options.projectId || "").trim();
+// 保存済みプロジェクトを Edge Function に渡し、quiz_quizzes を source_project_id 単位で upsert する
+async function publishQuizFromProject({ projectId, fallbackTitle }) {
   if (!projectId) {
     throw new Error("シェアする前にプロジェクトを保存してください");
   }
@@ -666,10 +609,7 @@ async function publishQuizFromProject(options = {}) {
       "Content-Type": "application/json",
       "X-Dataviz-Authorization": `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      projectId,
-      fallbackTitle: String(options.fallbackTitle || "").trim() || null,
-    }),
+    body: JSON.stringify({ projectId, fallbackTitle: fallbackTitle || null }),
   });
 
   const payload = await response.json().catch(() => null);
@@ -679,77 +619,11 @@ async function publishQuizFromProject(options = {}) {
   return payload || {};
 }
 
-async function generateQuizOgImage(title) {
-  const svgEl = document.querySelector(".ydi-chart-wrap svg");
-  if (!svgEl) return null;
-
-  const clone = await cloneChartSvg(svgEl, { extraText: title || "" });
-  const svgData = new XMLSerializer().serializeToString(clone);
-  const blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const candidate = new Image();
-      candidate.onload = () => resolve(candidate);
-      candidate.onerror = reject;
-      candidate.src = url;
-    });
-
-    const ogWidth = 1200;
-    const ogHeight = 630;
-    const canvas = document.createElement("canvas");
-    canvas.width = ogWidth;
-    canvas.height = ogHeight;
-
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, ogWidth, ogHeight);
-
-    const scale = Math.min(ogWidth / img.naturalWidth, (ogHeight - 60) / img.naturalHeight);
-    const dx = (ogWidth - img.naturalWidth * scale) / 2;
-    const dy = (ogHeight - 60 - img.naturalHeight * scale) / 2;
-    ctx.drawImage(img, dx, dy, img.naturalWidth * scale, img.naturalHeight * scale);
-
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
-    ctx.fillRect(0, ogHeight - 60, ogWidth, 60);
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 24px -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(title || "描いて答える折れ線グラフ", ogWidth / 2, ogHeight - 30);
-
-    return await new Promise((resolve, reject) => {
-      canvas.toBlob((pngBlob) => {
-        if (pngBlob) resolve(pngBlob);
-        else reject(new Error("toBlob failed"));
-      }, "image/png");
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-async function uploadQuizOgImage(quizId, pngBlob) {
-  if (!pngBlob) return null;
-
-  const { error } = await quizSupabase.storage
-    .from("quiz-og-images")
-    .upload(`quiz/${quizId}.png`, pngBlob, { contentType: "image/png", upsert: true });
-
-  if (error) {
-    console.warn("Quiz OG image upload failed:", error.message);
-    return null;
-  }
-
-  return `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/quiz/${quizId}.png`;
-}
-
 async function publishQuizShare({ projectId, title }) {
   showProcessingToast("シェアを作成中です");
   const result = await publishQuizFromProject({
-    projectId,
-    fallbackTitle: title,
+    projectId: String(projectId || "").trim(),
+    fallbackTitle: String(title || "").trim(),
   });
   const quizId = result?.quizId || result?.id || null;
   if (!quizId) {
@@ -758,120 +632,34 @@ async function publishQuizShare({ projectId, title }) {
 
   return {
     shareId: quizId,
-    shareUrl: buildPublicQuizUrl(quizId),
+    shareUrl: quizPageUrl(quizId),
     iframeCode: buildQuizIframeEmbedCode(quizId, title || result?.title || getCurrentQuizShareTitle()),
   };
 }
 
-// --------------- ?data_url / ?projectId 自動読込 ---------------
-async function autoLoadFromURL() {
-  const params = new URLSearchParams(window.location.search);
-
-  const dataUrl = params.get("data_url");
-  if (dataUrl) {
-    try {
-      const res = await fetch(dataUrl);
-      const text = await res.text();
-      const blob = new Blob([text], { type: "text/csv" });
-      const file = new File([blob], dataUrl.split("/").pop() || "data.csv", { type: "text/csv" });
-      handleFile(file);
-    } catch (err) {
-      console.error("data_url load failed:", err);
-    }
-    window.history.replaceState({}, document.title, window.location.pathname);
-    return;
-  }
-
-  const projectId = params.get("projectId");
-  if (!projectId) return;
-
-  await waitForDatavizAuthReady();
-  const token = await getAccessToken();
-  if (!token) return;
-
+// OG画像（失敗してもシェアは成功のまま）
+async function publishQuizOgImage({ shareId, title }) {
   try {
-    const header = await waitForToolHeaderReady();
-    if (header && typeof header.loadProject === "function") {
-      const data = await header.loadProject(projectId);
-      if (data && data.charts && Array.isArray(data.charts)) {
-        restoreFormFromConfig(data.charts[0]);
-        currentProjectId = projectId;
-      }
-    }
-  } catch (e) {
-    console.error("Auto-load failed:", e);
+    const pngBlob = await renderQuizOgPng(previewSvg(), title || getCurrentQuizShareTitle());
+    return !!(await uploadOgPng(quizSupabase, quizOgPath(shareId), pngBlob));
+  } catch (error) {
+    console.warn("Quiz OGP publish failed:", error);
+    return false;
   }
 }
 
-// --------------- フォーム復元（読込時） ---------------
-function restoreFormFromConfig(cfg) {
-  if (!cfg || !cfg.data) return;
-  uploadedData = cfg.data;
-  if (cfg.xFormat) currentXFormat = cfg.xFormat;
-  onDataLoaded();
-  document.getElementById("quiz-title").value = cfg.title || "";
-  document.getElementById("quiz-unit").value = cfg.unit || "";
-  document.getElementById("quiz-style").value = cfg.style || "";
-  document.getElementById("annotations-list").replaceChildren();
-  if (cfg.annotations) {
-    cfg.annotations.forEach((ann) => addAnnotationRow(ann.startX, ann.endX, ann.label));
-  }
-  if (cfg.drawStartX) {
-    document.getElementById("quiz-draw-start").value = cfg.drawStartX;
-  }
-
-  clearTimeout(previewDebounce);
-  const placeholder = document.getElementById("preview-placeholder");
-  if (placeholder) placeholder.style.display = "none";
-  previewSection.style.display = "block";
-  previewContainer.replaceChildren();
-  currentConfigs = [cfg];
-  mountChart(previewContainer, cfg);
-
-  openStep(1);
-  openStep(2);
-  openStep(3);
-  openStep(4);
-}
-
-// --------------- ツールヘッダー設定 ---------------
 async function setupToolHeader() {
   const toolHeader = await waitForToolHeaderReady();
-  if (!toolHeader || !toolHeader.setConfig) return;
+  if (!toolHeader) return;
   if (toolHeader.__dvzDrawingLineChartHeaderConfigured === "1") return;
   toolHeader.__dvzDrawingLineChartHeaderConfigured = "1";
 
-  if (typeof toolHeader.loadProject === "function" && toolHeader.__dvzLoadProjectWrapped !== "1") {
-    const originalLoadProject = toolHeader.loadProject.bind(toolHeader);
-    toolHeader.loadProject = async (projectId, ...args) => {
-      const data = await originalLoadProject(projectId, ...args);
-      const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
-      if (data && normalizedProjectId) {
-        currentProjectId = normalizedProjectId;
-      }
-      return data;
-    };
-    toolHeader.__dvzLoadProjectWrapped = "1";
-  }
-  installHeaderProcessingToasts(toolHeader);
-
+  // 公開ボタンはヘッダーの「シェア」（PUBLISH_FLOW_SPEC）
   toolHeader.setConfig({
-    logo: { type: "text", text: "描いて答える折れ線グラフ" },
+    logo: { type: "text", text: TOOL_NAME_JA },
     buttons: [
       { label: "プロジェクトの読込", action: () => toolHeader.showLoadModal(), id: "load-btn", align: "right" },
-      { label: "プロジェクトの保存", action: async () => {
-        if (!getCurrentProjectPayload()) {
-          showMessage("データをアップロードして設定を完了してください", "error");
-          return;
-        }
-        showProcessingToast("保存準備中です");
-        const payload = await buildEditorSavePayload();
-        if (!payload?.data) {
-          showMessage("データをアップロードして設定を完了してください", "error");
-          return;
-        }
-        toolHeader.showSaveModal(payload);
-      }, id: "save-btn", align: "right" },
+      { label: "プロジェクトの保存", action: () => openSaveModal(toolHeader), id: "save-btn", align: "right" },
       { label: "シェア", action: () => toolHeader.shareProject?.(), id: "share-btn", align: "right" },
     ],
   });
@@ -879,7 +667,7 @@ async function setupToolHeader() {
   toolHeader.setProjectConfig({
     appName: APP_NAME,
     onProjectLoad: (projectData, meta) => {
-      if (projectData.charts && Array.isArray(projectData.charts)) {
+      if (Array.isArray(projectData.charts)) {
         restoreFormFromConfig(projectData.charts[0]);
       }
       currentProjectId = meta?.isGroupProject ? null : (meta?.projectId || currentProjectId);
@@ -900,45 +688,81 @@ async function setupToolHeader() {
     },
   });
 
-  if (typeof toolHeader.setShareConfig === "function") {
-    toolHeader.setShareConfig({
-      getSavePayload: () => buildEditorSavePayload(),
-      getShareTitle: () => getCurrentQuizShareTitle(),
-      publishShare: (args) => publishQuizShare(args),
-      afterPublish: async ({ shareId, title }) => {
-        try {
-          const pngBlob = await generateQuizOgImage(title || getCurrentQuizShareTitle());
-          return !!(await uploadQuizOgImage(shareId, pngBlob));
-        } catch (error) {
-          console.warn("Quiz OGP publish failed:", error);
-          return false;
-        }
-      },
-    });
-  }
+  toolHeader.setShareConfig?.({
+    getSavePayload: () => buildEditorSavePayload(),
+    getShareTitle: () => getCurrentQuizShareTitle(),
+    publishShare: (args) => publishQuizShare(args),
+    afterPublish: (args) => publishQuizOgImage(args),
+  });
 
   toolHeader.setSampleConfig({
-    toolId: "drawing-line-chart",
+    toolId: APP_NAME,
     onSampleSelect: async (detail) => {
       const res = await fetch(detail.url);
-      const text = await res.text();
-      const blob = new Blob([text], { type: "text/csv" });
-      const file = new File([blob], (detail.name || "sample") + ".csv", { type: "text/csv" });
-      handleFile(file);
+      loadDataText(await res.text(), (detail.name || "sample") + ".csv");
     },
   });
 }
 
-// --------------- フォーム: データアップロード ---------------
-const dropzone = document.getElementById("dropzone");
-const fileInput = document.getElementById("file-input");
-const dataPreview = document.getElementById("data-preview");
-const drawStartSelect = document.getElementById("quiz-draw-start");
-const titleInput = document.getElementById("quiz-title");
-const unitInput = document.getElementById("quiz-unit");
-const previewSection = document.getElementById("preview-section");
-const previewContainer = document.getElementById("preview-container");
+// --------------- ?data_url / ?projectId 自動読込 ---------------
+async function autoLoadFromURL() {
+  const params = new URLSearchParams(window.location.search);
 
+  const dataUrl = params.get("data_url");
+  if (dataUrl) {
+    try {
+      const res = await fetch(dataUrl);
+      loadDataText(await res.text(), dataUrl.split("/").pop() || "data.csv");
+    } catch (err) {
+      console.error("data_url load failed:", err);
+    }
+    // data_url だけ消す（auth_debug などは残す）
+    params.delete("data_url");
+    const query = params.toString();
+    window.history.replaceState({}, document.title, window.location.pathname + (query ? `?${query}` : ""));
+    return;
+  }
+
+  const projectId = params.get("projectId");
+  if (!projectId || !(await getAccessToken())) return;
+
+  try {
+    await headerSetup;
+    const header = getReadyToolHeader();
+    if (typeof header?.loadProject !== "function") return;
+    const data = await header.loadProject(projectId);
+    if (Array.isArray(data?.charts)) {
+      restoreFormFromConfig(data.charts[0]);
+      currentProjectId = projectId;
+    }
+  } catch (e) {
+    console.error("Auto-load failed:", e);
+  }
+}
+
+// --------------- フォーム復元（読込時） ---------------
+function restoreFormFromConfig(cfg) {
+  if (!cfg || !cfg.data) return;
+  uploadedData = cfg.data;
+  csvRawRows = null;
+  colSelectRow.style.display = "none";
+  currentXFormat = cfg.xFormat || "year";
+  onDataLoaded();
+
+  titleInput.value = cfg.title || "";
+  unitInput.value = cfg.unit || "";
+  styleSelect.value = cfg.style || "";
+  annotationsList.replaceChildren();
+  (cfg.annotations || []).forEach((ann) => addAnnotationRow(ann.startX, ann.endX, ann.label));
+  if (cfg.drawStartX) {
+    drawStartSelect.value = cfg.drawStartX;
+  }
+
+  renderPreview(cfg);
+  [1, 2, 3, 4].forEach((n) => setStepOpen(n, true));
+}
+
+// --------------- データ読込 ---------------
 dropzone.addEventListener("click", () => fileInput.click());
 dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
 dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
@@ -952,259 +776,153 @@ fileInput.addEventListener("change", (e) => {
   if (e.target.files[0]) handleFile(e.target.files[0]);
 });
 
-/// 時系列列判定: 年(4桁)、年月(6桁YYYYMM)、日付文字列を含む列
-function isTimeSeriesCol(rows, col) {
-  const sample = rows.slice(0, Math.min(10, rows.length));
-  return sample.filter(r => {
-    const v = String(r[col]).trim();
-    return /^\d{4}$/.test(v) || /^\d{6}$/.test(v) || /\d{4}[-\/]/.test(v);
-  }).length > sample.length * 0.5;
+async function handleFile(file) {
+  loadDataText(await file.text(), file.name);
 }
 
-// YYYYMM → 小数年に変換（例: 201003 → 2010.167）
-function parseTimeValue(raw) {
-  const s = String(raw).trim();
-  // YYYYMM (6桁数値)
-  if (/^\d{6}$/.test(s)) {
-    const y = parseInt(s.slice(0, 4));
-    const m = parseInt(s.slice(4, 6));
-    return y + (m - 1) / 12;
-  }
-  // YYYY/MM or YYYY-MM
-  const ymMatch = s.match(/^(\d{4})[\/\-](\d{1,2})$/);
-  if (ymMatch) {
-    return parseInt(ymMatch[1]) + (parseInt(ymMatch[2]) - 1) / 12;
-  }
-  // YYYY/MM/DD or YYYY-MM-DD → 年月に変換
-  const ymdMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-]\d{1,2}$/);
-  if (ymdMatch) {
-    return parseInt(ymdMatch[1]) + (parseInt(ymdMatch[2]) - 1) / 12;
-  }
-  let x = parseFloat(s);
-  if (isNaN(x)) {
-    const dateMatch = s.match(/(\d{4})/);
-    if (dateMatch) x = parseInt(dateMatch[1]);
-  }
-  return x;
-}
+const toOption = (col) => ({ value: col, label: col });
 
-// 小数年をラベルに変換（ドロップダウン表示用）
-function formatXForDropdown(val) {
-  if (currentXFormat === "yyyymm") {
-    const y = Math.floor(val);
-    const m = Math.round((val - y) * 12) + 1;
-    return y + "/" + String(m).padStart(2, "0");
-  }
-  return String(val);
-}
-
-// X軸のフォーマッタを決定（YYYYMM形式か年のみか）
-function detectXFormat(rows, col) {
-  const sample = rows.slice(0, Math.min(10, rows.length));
-  const hasMonthly = sample.filter(r => {
-    const v = String(r[col]).trim();
-    return /^\d{6}$/.test(v) || /^\d{4}[\/\-]\d{1,2}$/.test(v) || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(v);
-  }).length > sample.length * 0.5;
-  return hasMonthly ? "yyyymm" : "year";
-}
-// 数値列判定: 大半の行が数値に変換できる列
-function isNumericCol(rows, col) {
-  const sample = rows.slice(0, Math.min(10, rows.length));
-  return sample.filter(r => !isNaN(parseFloat(String(r[col]).replace(/,/g, "")))).length > sample.length * 0.5;
-}
-
-// 選択中の列でデータをパースし直す
-function parseWithColumns(xColName, yColName) {
-  if (!csvRawRows) return;
-  currentXFormat = detectXFormat(csvRawRows, xColName);
-  const parsed = csvRawRows.map(d => {
-    const rawX = d[xColName];
-    const rawY = d[yColName];
-    const x = parseTimeValue(rawX);
-    const y = parseFloat(String(rawY).replace(/,/g, ""));
-    return { x, y };
-  }).filter(d => !isNaN(d.x) && !isNaN(d.y));
-
-  if (parsed.length < 2) {
-    showMessage("有効なデータが2行未満です。列の選択を確認してください。", "error");
-    return;
-  }
-  const dupX = parsed.map(d => d.x).filter((v, i, a) => a.indexOf(v) !== i);
-  if (dupX.length > 0) {
-    showMessage("X軸に重複があります。データを整理してください。", "error");
-    return;
-  }
-  parsed.sort((a, b) => a.x - b.x);
-  uploadedData = parsed;
+// 選択中の列で CSV を系列に変換して読み込む
+function loadCsvColumns(xCol, yCol) {
+  const series = validateSeries(rowsToSeries(csvRawRows, xCol, yCol));
+  currentXFormat = detectXFormat(csvRawRows, xCol);
+  uploadedData = series;
   onDataLoaded();
 }
 
-function handleFile(file) {
-  document.getElementById("data-source").replaceChildren();
+function loadDataText(text, fileName) {
+  dataSource.replaceChildren();
   showProcessingToast("ファイルを読み込み中です");
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = e.target.result;
-    try {
-      let parsed;
-      if (file.name.endsWith(".json")) {
-        parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) throw new Error("JSONは配列形式にしてください");
-        csvRawRows = null;
-        csvCols = null;
-        document.getElementById("col-select-row").style.display = "none";
-      } else {
-        const rows = d3.csvParse(text);
-        const cols = Object.keys(rows[0] || {});
-        if (cols.length < 2) throw new Error("2列以上のCSVが必要です");
-
-        csvRawRows = rows;
-        csvCols = cols;
-
-        // 自動検出
-        const autoX = cols.find(c => isTimeSeriesCol(rows, c));
-        const autoY = cols.find(c => c !== autoX && isNumericCol(rows, c));
-        if (!autoX || !autoY) throw new Error("時系列列と数値列が見つかりません");
-
-        // ドロップダウンを設定（Y軸は数値列のみ）
-        const colXSel = document.getElementById("col-x");
-        const colYSel = document.getElementById("col-y");
-        const numericCols = cols.filter(c => isNumericCol(rows, c));
-        populateSelect(colXSel, cols.map(c => ({ value: c, label: c })), autoX);
-        populateSelect(colYSel, numericCols.map(c => ({ value: c, label: c })), autoY);
-        document.getElementById("col-select-row").style.display = "";
-
-        currentXFormat = detectXFormat(rows, autoX);
-        parsed = rows.map(d => {
-          const rawX = d[autoX];
-          const rawY = d[autoY];
-          const x = parseTimeValue(rawX);
-          const y = parseFloat(String(rawY).replace(/,/g, ""));
-          return { x, y };
-        });
-      }
-      // Validate
-      parsed = parsed.filter(d => !isNaN(d.x) && !isNaN(d.y));
-      if (parsed.length < 2) throw new Error("2点以上のデータが必要です");
-      const dupX = parsed.map(d => d.x).filter((v, i, a) => a.indexOf(v) !== i);
-      if (dupX.length > 0) {
-        throw new Error("X軸に重複があります。データを整理してください。");
-      }
-      parsed.sort((a, b) => a.x - b.x);
-
-      uploadedData = parsed;
+  try {
+    if (fileName.endsWith(".json")) {
+      const rows = JSON.parse(text);
+      if (!Array.isArray(rows)) throw new Error("JSONは配列形式にしてください");
+      const series = validateSeries(rows);
+      csvRawRows = null;
+      colSelectRow.style.display = "none";
+      uploadedData = series;
       onDataLoaded();
-    } catch (err) {
-      showMessage("データの読み込みに失敗: " + err.message, "error");
+      return;
     }
-  };
-  reader.readAsText(file);
+
+    const rows = d3.csvParse(text);
+    const cols = Object.keys(rows[0] || {});
+    if (cols.length < 2) throw new Error("2列以上のCSVが必要です");
+
+    // 時系列列と数値列を自動検出（Y軸の候補は数値列のみ）
+    const autoX = cols.find(c => isTimeSeriesCol(rows, c));
+    const autoY = cols.find(c => c !== autoX && isNumericCol(rows, c));
+    if (!autoX || !autoY) throw new Error("時系列列と数値列が見つかりません");
+
+    csvRawRows = rows;
+    populateSelect(colXSelect, cols.map(toOption), autoX);
+    populateSelect(colYSelect, cols.filter(c => isNumericCol(rows, c)).map(toOption), autoY);
+    colSelectRow.style.display = "";
+    loadCsvColumns(autoX, autoY);
+  } catch (err) {
+    showMessage("データの読み込みに失敗: " + err.message, "error");
+  }
 }
 
-// 列選択ドロップダウンの変更イベント
-document.getElementById("col-x").addEventListener("change", () => {
-  parseWithColumns(document.getElementById("col-x").value, document.getElementById("col-y").value);
-});
-document.getElementById("col-y").addEventListener("change", () => {
-  parseWithColumns(document.getElementById("col-x").value, document.getElementById("col-y").value);
-});
+function onColumnChange() {
+  if (!csvRawRows) return;
+  try {
+    loadCsvColumns(colXSelect.value, colYSelect.value);
+  } catch (err) {
+    showMessage(err.message, "error");
+  }
+}
+colXSelect.addEventListener("change", onColumnChange);
+colYSelect.addEventListener("change", onColumnChange);
+
+function renderDataPreview() {
+  const colXLabel = csvRawRows ? colXSelect.value : "x";
+  const colYLabel = csvRawRows ? colYSelect.value : "y";
+  const valuesX = csvRawRows ? csvRawRows.map(row => row[colXLabel] || "") : uploadedData.map(d => d.x);
+  const valuesY = csvRawRows ? csvRawRows.map(row => row[colYLabel] || "") : uploadedData.map(d => d.y);
+  byId("data-preview-x").replaceChildren(createSingleColumnTable(colXLabel, valuesX));
+  byId("data-preview-y").replaceChildren(createSingleColumnTable(colYLabel, valuesY));
+  dataPreview.style.display = "";
+}
+
+const xOption = (x) => ({ value: x, label: formatXValue(x, currentXFormat) });
 
 function onDataLoaded() {
-  // アノテーション粒度をデータに合わせてデフォルト設定
+  // アノテーション粒度をデータに合わせる
   annGranularity.value = currentXFormat === "yyyymm" ? "yyyymm" : "year";
 
-  // Update dropzone
   dropzone.classList.add("loaded");
   dropzone.querySelector("p").textContent = `${uploadedData.length}件のデータを読み込みました`;
+  renderDataPreview();
 
-  // Show data preview tables (2 columns aligned with dropdowns)
-  const colXLabel = document.getElementById("col-x").value || "x";
-  const colYLabel = document.getElementById("col-y").value || "y";
-  let valuesX;
-  let valuesY;
-  if (csvRawRows && csvCols) {
-    valuesX = csvRawRows.map(row => row[colXLabel] || "");
-    valuesY = csvRawRows.map(row => row[colYLabel] || "");
-  } else {
-    valuesX = uploadedData.map(d => d.x);
-    valuesY = uploadedData.map(d => d.y);
-  }
-  document.getElementById("data-preview-x").replaceChildren(createSingleColumnTable(colXLabel, valuesX));
-  document.getElementById("data-preview-y").replaceChildren(createSingleColumnTable(colYLabel, valuesY));
-  dataPreview.style.display = "";
-
-  // Populate period select dropdowns
-  const periodStartSel = document.getElementById("period-start");
-  const periodEndSel = document.getElementById("period-end");
-  const allXValues = uploadedData.map(d => d.x);
-  const periodOptions = allXValues.map(x => ({ value: x, label: formatXForDropdown(x) }));
-  populateSelect(periodStartSel, periodOptions, allXValues[0]);
-  populateSelect(periodEndSel, periodOptions, allXValues[allXValues.length - 1]);
-  periodStartSel.value = allXValues[0];
-  periodEndSel.value = allXValues[allXValues.length - 1];
-  periodStartSel.disabled = false;
-  periodEndSel.disabled = false;
-  document.getElementById("period-select-row").style.display = "";
+  const periodOptions = uploadedData.map(d => xOption(d.x));
+  populateSelect(periodStartSelect, periodOptions, uploadedData[0].x);
+  populateSelect(periodEndSelect, periodOptions, uploadedData[uploadedData.length - 1].x);
+  periodStartSelect.disabled = false;
+  periodEndSelect.disabled = false;
+  periodRow.style.display = "";
 
   populateDrawStart();
   updatePreview();
 
-  // アコーディオン自動遷移: ステップ1を閉じて2,3を開く
-  closeStep(1);
-  openStep(2);
-  openStep(3);
+  setStepOpen(1, false);
+  setStepOpen(2, true);
+  setStepOpen(3, true);
 }
 
-// 対象期間に応じたデータをフィルタして返す
+// 対象期間で絞った系列
 function getFilteredData() {
   if (!uploadedData) return null;
-  const startVal = parseFloat(document.getElementById("period-start").value);
-  const endVal = parseFloat(document.getElementById("period-end").value);
+  const startVal = parseFloat(periodStartSelect.value);
+  const endVal = parseFloat(periodEndSelect.value);
   if (isNaN(startVal) || isNaN(endVal)) return uploadedData;
   return uploadedData.filter(d => d.x >= startVal && d.x <= endVal);
 }
 
-// 対象期間が変わったらdrawStartXのドロップダウンを再設定
+// 予想開始の選択肢（両端を除く。既定は中央）
 function populateDrawStart() {
   const filtered = getFilteredData();
   if (!filtered || filtered.length < 2) return;
-  drawStartSelect.replaceChildren();
+  const midX = filtered[Math.floor(filtered.length / 2)].x;
+  populateSelect(drawStartSelect, filtered.slice(1, -1).map(d => xOption(d.x)), midX);
   drawStartSelect.disabled = false;
-  const xValues = filtered.map(d => d.x);
-  const midIdx = Math.floor(xValues.length / 2);
-  xValues.forEach((x, i) => {
-    if (i === 0 || i === xValues.length - 1) return;
-    const opt = document.createElement("option");
-    opt.value = x;
-    opt.textContent = formatXForDropdown(x);
-    if (i === midIdx) opt.selected = true;
-    drawStartSelect.appendChild(opt);
-  });
 }
 
-document.getElementById("period-start").addEventListener("change", () => { populateDrawStart(); updatePreview(); });
-document.getElementById("period-end").addEventListener("change", () => { populateDrawStart(); updatePreview(); });
+function onPeriodChange() {
+  populateDrawStart();
+  updatePreview();
+}
+periodStartSelect.addEventListener("change", onPeriodChange);
+periodEndSelect.addEventListener("change", onPeriodChange);
 
-// --------------- フォーム: プレビュー更新 ---------------
-let previewDebounce = null;
+// --------------- プレビュー ---------------
+function renderPreview(cfg) {
+  clearTimeout(previewDebounce);
+  previewPlaceholder.style.display = "none";
+  previewSection.style.display = "block";
+  previewChart?.destroy();
+  previewContainer.replaceChildren();
+  currentConfigs = [cfg];
+  previewChart = new ChartInstance(previewContainer, cfg, { sanitizeHtml: appendSanitizedHtml });
+}
 
 function updatePreview() {
   if (!uploadedData) return;
   clearTimeout(previewDebounce);
   previewDebounce = setTimeout(() => {
     const cfg = buildConfig();
-    if (!cfg) return;
-
-    const placeholder = document.getElementById("preview-placeholder");
-    if (placeholder) placeholder.style.display = "none";
-    previewSection.style.display = "block";
-    previewContainer.replaceChildren();
-    // Remove existing chart wraps from preview
-    previewContainer.querySelectorAll(".ydi-chart-wrap").forEach(el => el.remove());
-
-    currentConfigs = [cfg];
-    mountChart(previewContainer, cfg);
+    if (cfg) renderPreview(cfg);
   }, 200);
+}
+
+function readAnnotations() {
+  return [...annotationsList.querySelectorAll(".ydi-annotation-row")]
+    .map(row => ({
+      startX: parseFloat(row.querySelector(".ann-start").value),
+      endX: parseFloat(row.querySelector(".ann-end").value),
+      label: row.querySelector(".ann-label").value.trim(),
+    }))
+    .filter(ann => !isNaN(ann.startX) && !isNaN(ann.endX));
 }
 
 function buildConfig() {
@@ -1213,122 +931,81 @@ function buildConfig() {
   const drawStartX = parseFloat(drawStartSelect.value);
   if (isNaN(drawStartX)) return null;
 
-  const styleVal = document.getElementById("quiz-style").value;
-  const annotations = [];
-  document.querySelectorAll(".ydi-annotation-row").forEach(row => {
-    const startX = parseFloat(row.querySelector(".ann-start").value);
-    const endX = parseFloat(row.querySelector(".ann-end").value);
-    const label = row.querySelector(".ann-label").value.trim();
-    if (!isNaN(startX) && !isNaN(endX)) {
-      annotations.push({ startX, endX, label: label || "" });
-    }
-  });
+  const annotations = readAnnotations();
   return {
     id: "preview",
     title: titleInput.value || "タイトル未設定",
     data: filtered,
-    drawStartX: drawStartX,
+    drawStartX,
     unit: unitInput.value || "",
-    style: styleVal || undefined,
+    style: styleSelect.value || undefined,
     xFormat: currentXFormat !== "year" ? currentXFormat : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
     yFormat: ",.0f",
     precision: 0,
     yExtent: 1.5,
-    buttonText: "答え合わせ",
-    drawPrompt: ["線を描いて", "予想してみよう"],
   };
 }
 
-// Form change listeners
 drawStartSelect.addEventListener("change", updatePreview);
 titleInput.addEventListener("input", updatePreview);
 unitInput.addEventListener("input", updatePreview);
-document.getElementById("quiz-style").addEventListener("change", updatePreview);
+styleSelect.addEventListener("change", updatePreview);
 
-// Annotation add/remove
-const annGranularity = document.getElementById("ann-granularity");
-
-// アノテーション粒度に応じた選択肢を生成
-function getAnnotationOptionItems() {
-  const filtered = getFilteredData();
-  if (!filtered || filtered.length < 2) return [];
-  const granularity = annGranularity.value;
-  const minX = Math.floor(filtered[0].x);
-  const maxX = Math.ceil(filtered[filtered.length - 1].x);
-  const values = [];
-  if (granularity === "yyyymm") {
-    for (let y = minX; y <= maxX; y++) {
-      for (let m = 1; m <= 12; m++) {
-        const val = +(y + (m - 1) / 12).toFixed(6);
-        values.push({ val, label: y + "/" + String(m).padStart(2, "0") });
-      }
-    }
-  } else {
-    for (let y = minX; y <= maxX; y++) {
-      values.push({ val: y, label: String(y) });
-    }
-  }
-  return values;
+// --------------- アノテーション ---------------
+function populateAnnotationSelect(selectEl, selectedVal) {
+  const options = annotationOptions(getFilteredData(), annGranularity.value);
+  populateSelect(selectEl, options);
+  const selected = options.find(o => Math.abs(o.value - selectedVal) < 0.001);
+  if (selected) selectEl.value = String(selected.value);
+  return options.length;
 }
 
-function populateAnnotationSelect(selectEl, selectedVal) {
-  const values = getAnnotationOptionItems();
-  populateSelect(selectEl, values.map(v => ({ value: v.val, label: v.label })));
-  if (selectedVal !== undefined) {
-    const selected = values.find(v => Math.abs(v.val - selectedVal) < 0.001);
-    if (selected) selectEl.value = String(selected.val);
-  }
-  return values.length;
+function createField(labelText, control, className) {
+  const wrap = document.createElement("div");
+  if (className) wrap.className = className;
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  wrap.append(label, control);
+  return wrap;
+}
+
+function createSelect(className) {
+  const select = document.createElement("select");
+  select.className = className;
+  return select;
 }
 
 function addAnnotationRow(startX, endX, label) {
-  const list = document.getElementById("annotations-list");
-  const row = document.createElement("div");
-  row.className = "ydi-annotation-row";
-
-  const startWrap = document.createElement("div");
-  const startLabel = document.createElement("label");
-  startLabel.textContent = "開始";
-  const startSel = document.createElement("select");
-  startSel.className = "ann-start";
-  startWrap.append(startLabel, startSel);
-
-  const endWrap = document.createElement("div");
-  const endLabel = document.createElement("label");
-  endLabel.textContent = "終了";
-  const endSel = document.createElement("select");
-  endSel.className = "ann-end";
-  endWrap.append(endLabel, endSel);
-
+  const startSel = createSelect("ann-start");
+  const endSel = createSelect("ann-end");
   if (!populateAnnotationSelect(startSel, startX)) return;
   populateAnnotationSelect(endSel, endX);
 
-  const labelWrap = document.createElement("div");
-  labelWrap.className = "ann-label-wrap";
-  const labelLabel = document.createElement("label");
-  labelLabel.textContent = "ラベル";
   const labelInput = document.createElement("input");
   labelInput.type = "text";
   labelInput.className = "ann-label";
   labelInput.placeholder = "例: 高市内閣";
   labelInput.value = label || "";
+
   const removeBtn = document.createElement("button");
   removeBtn.type = "button";
   removeBtn.className = "ann-remove";
   removeBtn.textContent = "×";
-  labelWrap.append(labelLabel, labelInput, removeBtn);
 
-  row.append(startWrap, endWrap, labelWrap);
-  row.querySelectorAll("select, input").forEach(el => el.addEventListener("change", updatePreview));
-  row.querySelector(".ann-label").addEventListener("input", updatePreview);
-  list.appendChild(row);
+  const labelWrap = createField("ラベル", labelInput, "ann-label-wrap");
+  labelWrap.appendChild(removeBtn);
+
+  const row = document.createElement("div");
+  row.className = "ydi-annotation-row";
+  row.append(createField("開始", startSel), createField("終了", endSel), labelWrap);
+  annotationsList.appendChild(row);
   updatePreview();
 }
 
-// 粒度変更時: 既存アノテーション行の選択肢を再生成（値とラベルは保持）
+// 粒度変更時: 既存行の選択肢を作り直す（値とラベルは保持）
 annGranularity.addEventListener("change", () => {
-  document.querySelectorAll(".ydi-annotation-row").forEach(row => {
+  annotationsList.querySelectorAll(".ydi-annotation-row").forEach(row => {
     const startSel = row.querySelector(".ann-start");
     const endSel = row.querySelector(".ann-end");
     const startVal = parseFloat(startSel.value);
@@ -1338,22 +1015,19 @@ annGranularity.addEventListener("change", () => {
   });
   updatePreview();
 });
-document.getElementById("add-annotation").addEventListener("click", () => addAnnotationRow());
-document.getElementById("annotations-list").addEventListener("click", (e) => {
+byId("add-annotation").addEventListener("click", () => addAnnotationRow());
+annotationsList.addEventListener("change", updatePreview);
+annotationsList.addEventListener("input", updatePreview);
+annotationsList.addEventListener("click", (e) => {
   if (e.target.classList.contains("ann-remove")) {
     e.target.closest(".ydi-annotation-row").remove();
     updatePreview();
   }
 });
 
-// --------------- アコーディオン制御 ---------------
-function openStep(n) {
-  const step = document.querySelector(`.ydi-accordion-step[data-step="${n}"]`);
-  if (step) step.classList.add("open");
-}
-function closeStep(n) {
-  const step = document.querySelector(`.ydi-accordion-step[data-step="${n}"]`);
-  if (step) step.classList.remove("open");
+// --------------- アコーディオン ---------------
+function setStepOpen(n, open) {
+  document.querySelector(`.ydi-accordion-step[data-step="${n}"]`)?.classList.toggle("open", open);
 }
 document.querySelectorAll(".ydi-step-header").forEach(header => {
   header.addEventListener("click", () => {
@@ -1362,16 +1036,8 @@ document.querySelectorAll(".ydi-step-header").forEach(header => {
 });
 
 // --------------- 初期化 ---------------
-// No default charts — user uploads data
-
-// ツールヘッダーはdeferで遅延読込されるため、DOMContentLoadedで設定
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", setupToolHeader);
-} else {
-  setTimeout(setupToolHeader, 100);
-}
-
-// URL自動読込（プロジェクト読込時はフォームを復元）
+// ?projectId= の読込はヘッダー設定（setProjectConfig）の完了を待つ
+const headerSetup = setupToolHeader();
 autoLoadFromURL();
 </script>
 </body>

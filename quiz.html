@@ -20,113 +20,9 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="d3.sketchy.js"></script>
 <script src="safe-dom.js"></script>
+<link rel="stylesheet" href="ydi-page.css">
 <link rel="stylesheet" href="ydi-chart.css">
 <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap" rel="stylesheet">
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #333;
-  background-color: #eff3ff;
-  background-image: url("data:image/svg+xml,%3Csvg width='64' height='64' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 16c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm0-2c3.314 0 6-2.686 6-6s-2.686-6-6-6-6 2.686-6 6 2.686 6 6 6zm33.414-6l5.95-5.95L45.95.636 40 6.586 34.05.636 32.636 2.05 38.586 8l-5.95 5.95 1.414 1.414L40 9.414l5.95 5.95 1.414-1.414L41.414 8zM40 48c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm0-2c3.314 0 6-2.686 6-6s-2.686-6-6-6-6 2.686-6 6 2.686 6 6 6zM9.414 40l5.95-5.95-1.414-1.414L8 38.586l-5.95-5.95L.636 34.05 6.586 40l-5.95 5.95 1.414 1.414L8 41.414l5.95 5.95 1.414-1.414L9.414 40z' fill='%23bdd7e7' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E");
-  line-height: 1.6;
-}
-
-.dvz-app {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 32px 16px 20px;
-}
-
-/* Loading / Error states */
-#dvz-loading, #dvz-error {
-  text-align: center;
-  padding: 80px 20px;
-  color: #999;
-  font-size: 1rem;
-}
-#dvz-error { color: #c00; }
-.dvz-lead { text-align: center; color: #888; font-size: 0.85rem; margin-bottom: 8px; }
-
-/* Share area */
-.dvz-cta {
-  text-align: center;
-  margin-top: 24px;
-}
-.dvz-cta a {
-  display: inline-block;
-  padding: 12px 32px;
-  min-height: 44px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
-  background: #333;
-  border: none;
-  border-radius: 4px;
-  text-decoration: none;
-  transition: background 0.2s;
-}
-.dvz-cta a:hover { background: #555; }
-
-.dvz-share-area { margin-top: 12px; }
-.ydi-share-url {
-  display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 8px;
-}
-.ydi-share-url input {
-  flex: 1; max-width: 300px; padding: 6px 10px; font-size: 0.85rem;
-  border: 1px solid #ddd; border-radius: 4px; background: #f8f8f8;
-}
-.ydi-share-btn {
-  display: inline-block; padding: 6px 14px; font-size: 13px; font-weight: 600;
-  color: #555; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px;
-  cursor: pointer; transition: background 0.2s; text-decoration: none;
-}
-.ydi-share-btn:hover { background: #e0e0e0; }
-
-.dvz-site-links {
-  text-align: center;
-  margin-top: 32px;
-  padding: 16px 0;
-  font-size: 0.8rem;
-  color: #999;
-}
-.dvz-site-links a {
-  color: #888;
-  text-decoration: none;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-.dvz-site-links a:hover { color: #555; text-decoration: underline; }
-.dvz-site-links span { margin: 0 6px; color: #ccc; }
-
-/* タブレット */
-@media (max-width: 768px) {
-  .dvz-app { padding: 24px 12px 16px; }
-}
-
-/* スマートフォン */
-@media (max-width: 480px) {
-  .dvz-app { padding: 20px 8px 12px; }
-  .dvz-cta a { font-size: 0.9rem; padding: 10px 24px; }
-}
-
-/* ---- Embed mode ---- */
-.dvz-embed body {
-  background-color: transparent;
-  background-image: none;
-}
-.dvz-embed .dvz-site-links {
-  display: none;
-}
-.dvz-embed .dvz-app {
-  padding: 16px 12px;
-}
-.dvz-embed .dvz-share-area {
-  display: none;
-}
-</style>
 </head>
 <body>
 
@@ -147,17 +43,17 @@ body {
 
 <script type="module">
 import { ChartInstance } from "./ydi-chart.js";
-import { embedFontForChars, downloadChartPng } from "./ydi-export.js";
+import { downloadChartPng, renderResultOgPng } from "./ydi-export.js";
+import { createQuizClient, resultPageUrl, resultOgPath, uploadOgPng } from "./ydi-config.js";
+import {
+  createI18n, setupEmbedMode, fillSiteLinks, showLoading, hideLoading, showPageError, startLoadTimeout,
+} from "./ydi-public.js";
 
 // ============================================================
 //  Quiz Page — 描いて答える折れ線グラフ
 // ============================================================
 
-// ---- i18n ----
-const LANG = navigator.language.startsWith('ja') ? 'ja' : 'en';
-document.documentElement.lang = LANG;
-
-const TRANSLATIONS = {
+const { t } = createI18n({
   ja: {
     loading: '読み込み中...',
     noId: 'クイズIDが指定されていません',
@@ -206,229 +102,106 @@ const TRANSLATIONS = {
     saveImage: 'Save image',
     cta: 'Create with your own data',
   }
-};
+});
 
-function t(key) {
-  return TRANSLATIONS[LANG]?.[key] ?? TRANSLATIONS.en[key] ?? key;
-}
-
-function setMeta(property, content) {
-  const el = document.querySelector(`meta[property="${property}"]`)
-          || document.querySelector(`meta[name="${property}"]`);
-  if (el) el.setAttribute('content', content);
-}
-
-// ---- Embed mode ----
-const IS_EMBED = new URLSearchParams(location.search).get('embed') === '1';
-
-if (IS_EMBED) {
-  document.documentElement.classList.add('dvz-embed');
-
-  const postHeight = () => {
-    window.parent.postMessage(
-      { type: 'dvz-resize', height: document.documentElement.scrollHeight },
-      '*'
-    );
-  };
-  new ResizeObserver(postHeight).observe(document.body);
-  window.addEventListener('load', postHeight);
-
-  const retargetLinks = () => {
-    document.querySelectorAll('a[href]:not([target="_blank"])').forEach(a => {
-      if (!a.href.startsWith('javascript:')) {
-        a.target = '_blank';
-        a.rel = 'noopener';
-      }
-    });
-  };
-  retargetLinks();
-  new MutationObserver(retargetLinks).observe(document.body, { childList: true, subtree: true });
-}
-
-function initializeUI() {
-  document.getElementById('dvz-loading').textContent = t('loading');
-  document.getElementById('dvz-lead').textContent = t('lead');
-  document.getElementById('dvz-cta-link').textContent = t('cta');
-  document.querySelector('.dvz-site-links a:first-child').textContent = t('toolName');
-}
-initializeUI();
-
-const DEPLOY_ORIGIN = "https://drawing-line-chart.dataviz.jp";
+setupEmbedMode();
+showLoading(t('loading'));
+fillSiteLinks(t('toolName'));
+document.getElementById('dvz-lead').textContent = t('lead');
+document.getElementById('dvz-cta-link').textContent = t('cta');
 
 const { appendSanitizedHtml } = window.dvzDom;
+const quizSupabase = createQuizClient();
 
-// --------------- Quiz用Supabaseクライアント ---------------
-const SUPABASE_URL = "https://vebhoeiltxspsurqoxvl.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_sAjwbAhC0jnIRjNa34QuTA_CcksMYQG";
-
-// --------------- Supabaseクライアント初期化 ---------------
-const quizSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// --------------- OG画像生成 ---------------
-async function generateOgImage(svgEl, title, scoreLabel) {
-  const clone = svgEl.cloneNode(true);
-
-  // clip-pathを除去して実データ線を完全表示
-  clone.querySelectorAll("[clip-path]").forEach(el => el.removeAttribute("clip-path"));
-  // 不要な要素を除去
-  clone.querySelectorAll(".ydi-flash-rect, .ydi-drag-rect, .ydi-draw-prompt").forEach(el => el.remove());
-
-  const origW = parseFloat(clone.getAttribute("width"));
-  const origH = parseFloat(clone.getAttribute("height"));
-  const ogW = 1200;
-  const ogH = 630;
-
-  // ラッパーSVGを作成
-  const ns = "http://www.w3.org/2000/svg";
-  const wrapper = document.createElementNS(ns, "svg");
-  wrapper.setAttribute("xmlns", ns);
-  wrapper.setAttribute("width", ogW);
-  wrapper.setAttribute("height", ogH);
-  wrapper.setAttribute("viewBox", `0 0 ${ogW} ${ogH}`);
-
-  // 白背景
-  const bg = document.createElementNS(ns, "rect");
-  bg.setAttribute("width", ogW);
-  bg.setAttribute("height", ogH);
-  bg.setAttribute("fill", "white");
-  wrapper.appendChild(bg);
-
-  // 使用文字のフォントsubsetを埋め込み
-  const allOgText = (title || "") + (scoreLabel || "") + (clone.textContent || "");
-  const ogChars = [...new Set(allOgText.split(""))];
-  const ogFontCSS = await embedFontForChars(ogChars);
-  const styleEl = document.createElementNS(ns, "style");
-  styleEl.textContent = `
-    ${ogFontCSS}
-    text { font-family: 'Klee One', cursive; }
-    .ydi-grid line { stroke: #e0e0e0; stroke-width: 1; }
-    .axis path, .axis line { stroke: #ccc; }
-    .axis text { fill: #888; font-size: 12px; }
-    .ydi-known-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-    .ydi-actual-line { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-    .ydi-area { opacity: 0.12; }
-    .ydi-user-line { fill: none; stroke-width: 3; stroke-dasharray: 1 7; stroke-linecap: round; }
-    .ydi-value-label { font-size: 13px; font-weight: 700; }
-    .ydi-divider { stroke: #ccc; stroke-width: 1; stroke-dasharray: 4 3; }
-    .ydi-legend-label { font-size: 12px; font-weight: 600; }
-  `;
-  wrapper.appendChild(styleEl);
-
-  // タイトル
-  const titleEl = document.createElementNS(ns, "text");
-  titleEl.setAttribute("x", ogW / 2);
-  titleEl.setAttribute("y", 48);
-  titleEl.setAttribute("text-anchor", "middle");
-  titleEl.setAttribute("font-size", "28");
-  titleEl.setAttribute("font-weight", "600");
-  titleEl.setAttribute("fill", "#333");
-  titleEl.textContent = title;
-  wrapper.appendChild(titleEl);
-
-  // チャートをスケーリングして配置
-  const chartG = document.createElementNS(ns, "g");
-  const scale = Math.min((ogW - 80) / origW, (ogH - 150) / origH);
-  const dx = (ogW - origW * scale) / 2;
-  const dy = 75;
-  chartG.setAttribute("transform", `translate(${dx},${dy}) scale(${scale})`);
-  while (clone.firstChild) chartG.appendChild(clone.firstChild);
-  wrapper.appendChild(chartG);
-
-  // スコアラベル
-  const scoreEl = document.createElementNS(ns, "text");
-  scoreEl.setAttribute("x", ogW / 2);
-  scoreEl.setAttribute("y", ogH - 28);
-  scoreEl.setAttribute("text-anchor", "middle");
-  scoreEl.setAttribute("font-size", "24");
-  scoreEl.setAttribute("font-weight", "700");
-  scoreEl.setAttribute("fill", "#555");
-  scoreEl.textContent = scoreLabel;
-  wrapper.appendChild(scoreEl);
-
-  // SVG → Canvas → PNG Blob
-  const serializer = new XMLSerializer();
-  const svgString = serializer.serializeToString(wrapper);
-  const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(svgBlob);
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = ogW;
-      canvas.height = ogH;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, ogW, ogH);
-      ctx.drawImage(img, 0, 0, ogW, ogH);
-      URL.revokeObjectURL(url);
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("toBlob failed")), "image/png");
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("SVG render failed")); };
-    img.src = url;
-  });
+function createButton(label) {
+  const button = document.createElement('button');
+  button.className = 'ydi-share-btn';
+  button.textContent = label;
+  return button;
 }
 
-async function uploadOgImage(responseId, pngBlob) {
-  const { error } = await quizSupabase.storage
-    .from("quiz-og-images")
-    .upload(`${responseId}.png`, pngBlob, { contentType: "image/png", upsert: true });
-  if (error) {
-    console.warn("OG image upload failed:", error.message);
-    return null;
-  }
-  return `${SUPABASE_URL}/storage/v1/object/public/quiz-og-images/${responseId}.png`;
+// 答え合わせ後: 結果URLのコピーと画像保存
+function appendShareArea(afterEl, shareUrl, getSvg, title) {
+  const shareArea = document.createElement('div');
+  shareArea.className = 'dvz-share-area';
+
+  const heading = document.createElement('p');
+  heading.className = 'dvz-share-title';
+  heading.textContent = t('shareTitle');
+
+  const copyBtn = createButton(t('copyUrl'));
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      copyBtn.textContent = t('copied');
+      setTimeout(() => { copyBtn.textContent = t('copyUrl'); }, 2000);
+    });
+  });
+
+  const downloadBtn = createButton(t('saveImage'));
+  downloadBtn.addEventListener('click', () => downloadChartPng(getSvg(), title));
+
+  const buttons = document.createElement('div');
+  buttons.className = 'dvz-share-buttons';
+  buttons.append(copyBtn, downloadBtn);
+
+  shareArea.append(heading, buttons);
+  afterEl.appendChild(shareArea);
+}
+
+async function saveResponse(quizId, { exportData, totalError, avgRatio, label }) {
+  const { data, error } = await quizSupabase
+    .from("quiz_responses")
+    .insert({
+      quiz_id: quizId,
+      prediction_data: exportData,
+      score_label: label,
+      total_error: totalError,
+      avg_ratio: avgRatio,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
 }
 
 // --------------- 初期化 ---------------
 async function init() {
-  const loadingEl = document.getElementById("dvz-loading");
-  const errorEl = document.getElementById("dvz-error");
   const containerEl = document.getElementById("dvz-content");
-
-  const timeout = setTimeout(() => {
-    loadingEl.style.display = "none";
-    errorEl.style.display = "block";
-    errorEl.textContent = t('timeout');
-  }, 15000);
-
-  const params = new URLSearchParams(window.location.search);
-  const quizId = params.get("id");
-
+  const quizId = new URLSearchParams(window.location.search).get("id");
   if (!quizId) {
-    clearTimeout(timeout);
-    loadingEl.style.display = "none";
-    errorEl.style.display = "block";
-    errorEl.textContent = t('noId');
+    showPageError(t('noId'));
     return;
   }
 
+  const cancelTimeout = startLoadTimeout(t('timeout'));
   try {
     const { data: quiz, error } = await quizSupabase
       .from("quiz_quizzes")
       .select("*")
       .eq("id", quizId)
       .single();
+    cancelTimeout();
 
     if (error || !quiz) {
-      clearTimeout(timeout);
-      loadingEl.style.display = "none";
-      errorEl.style.display = "block";
-      errorEl.textContent = t('notFound');
+      showPageError(t('notFound'));
       return;
     }
 
-    // Render chart
-    clearTimeout(timeout);
-    loadingEl.style.display = "none";
+    hideLoading();
     containerEl.style.display = "block";
     document.getElementById("dvz-lead").style.display = "block";
     document.title = quiz.title + " — " + t('titleSuffix');
 
-    const cfg = { ...quiz.chart_config, id: quizId };
-    if (!cfg.title) cfg.title = quiz.title;
+    // 操作文言は閲覧者の言語で出す（保存済み chart_config の文言より優先）
+    const cfg = {
+      ...quiz.chart_config,
+      id: quizId,
+      title: quiz.chart_config?.title || quiz.title,
+      buttonText: t('buttonText'),
+      drawPrompt: t('drawPrompt'),
+    };
 
-    const chart = new ChartInstance(containerEl, cfg, {
+    new ChartInstance(containerEl, cfg, {
       mode: "interactive",
       controls: "outside",
       breakpoints: "public",
@@ -444,80 +217,18 @@ async function init() {
       },
     });
 
-    // Listen for reveal → save response
     containerEl.addEventListener("you-draw-it:revealed", async (e) => {
-      const { exportData, totalError, avgRatio, label } = e.detail;
-
-      // CTAを表示
       document.getElementById('dvz-cta').style.display = '';
 
       try {
-        const { data: response, error: insertErr } = await quizSupabase
-          .from("quiz_responses")
-          .insert({
-            quiz_id: quizId,
-            prediction_data: exportData,
-            score_label: label,
-            total_error: totalError,
-            avg_ratio: avgRatio,
-          })
-          .select("id")
-          .single();
+        const responseId = await saveResponse(quizId, e.detail);
+        const getSvg = () => containerEl.querySelector("svg");
+        appendShareArea(containerEl.querySelector(".ydi-after-reveal"), resultPageUrl(responseId), getSvg, quiz.title);
 
-        if (insertErr) throw insertErr;
-
-        // Share URLs
-        const shareUrl = `${DEPLOY_ORIGIN}/share.html?id=${response.id}`;
-
-        const afterEl = containerEl.querySelector(".ydi-after-reveal");
-
-        const shareArea = document.createElement('div');
-        shareArea.className = 'dvz-share-area';
-
-        const shareTitle = document.createElement('p');
-        shareTitle.style.marginTop = '12px';
-        shareTitle.style.fontWeight = '600';
-        shareTitle.textContent = t('shareTitle');
-        shareArea.appendChild(shareTitle);
-
-        const shareButtons = document.createElement('div');
-        shareButtons.style.marginTop = '8px';
-        shareButtons.style.display = 'flex';
-        shareButtons.style.gap = '8px';
-        shareButtons.style.justifyContent = 'center';
-        shareButtons.style.flexWrap = 'wrap';
-
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'ydi-share-btn';
-        copyBtn.id = 'share-copy-btn';
-        copyBtn.textContent = t('copyUrl');
-        shareButtons.appendChild(copyBtn);
-
-        const dlBtn = document.createElement('button');
-        dlBtn.className = 'ydi-share-btn';
-        dlBtn.id = 'download-png-btn';
-        dlBtn.textContent = t('saveImage');
-        shareButtons.appendChild(dlBtn);
-
-        shareArea.appendChild(shareButtons);
-        afterEl.appendChild(shareArea);
-
-        copyBtn.addEventListener("click", () => {
-          navigator.clipboard.writeText(shareUrl).then(() => {
-            copyBtn.textContent = t('copied');
-            setTimeout(() => { copyBtn.textContent = t('copyUrl'); }, 2000);
-          });
-        });
-
-        dlBtn.addEventListener("click", () => {
-          downloadChartPng(containerEl.querySelector("svg"), quiz.title);
-        });
-
-        // OG画像を生成・アップロード（非同期・失敗しても問題なし）
+        // OG画像（失敗しても結果ページは有効）
         try {
-          const svgEl = containerEl.querySelector("svg");
-          const pngBlob = await generateOgImage(svgEl, quiz.title, label);
-          await uploadOgImage(response.id, pngBlob);
+          const pngBlob = await renderResultOgPng(getSvg(), quiz.title, e.detail.label);
+          await uploadOgPng(quizSupabase, resultOgPath(responseId), pngBlob);
         } catch (ogErr) {
           console.warn("OG image generation/upload failed:", ogErr);
         }
@@ -525,12 +236,9 @@ async function init() {
         console.error("Response save failed:", saveErr);
       }
     });
-
   } catch (e) {
-    clearTimeout(timeout);
-    loadingEl.style.display = "none";
-    errorEl.style.display = "block";
-    errorEl.textContent = t('error');
+    cancelTimeout();
+    showPageError(t('error'));
     console.error(e);
   }
 }

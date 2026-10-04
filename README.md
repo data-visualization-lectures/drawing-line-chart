@@ -8,7 +8,7 @@
 
 | ページ | 役割 |
 |---|---|
-| `index.html` | 作成。CSV/JSON を読み、プレビューし、`api.dataviz.jp` にプロジェクト保存。公開は `publish-drawing-line-chart-quiz` |
+| `index.html` | 作成。CSV/JSON を読み、プレビューし、`api.dataviz.jp` にプロジェクト保存。公開はヘッダーの「シェア」→ `publish-drawing-line-chart-quiz` |
 | `quiz.html` | 回答。`quiz_quizzes` を読み、線を描いて答え合わせ。結果は `quiz_responses` へ |
 | `share.html` | 結果閲覧。保存済みの予測線と実データを静的表示 |
 
@@ -23,14 +23,18 @@ drawing-line-chart/
 ├── share.html          # 結果
 ├── ydi-chart.js        # ChartInstance（interactive / static）
 ├── ydi-chart.css       # チャート共通スタイル
-├── ydi-export.js       # PNG / サムネ / フォント埋め込み
+├── ydi-export.js       # PNG / サムネ / OG 画像 / フォント埋め込み
+├── ydi-config.js       # Supabase 定数、公開 URL、OG 画像の Storage パス
+├── ydi-data.js         # CSV 列判定・系列変換・年月表記（作成画面）
+├── ydi-public.js       # 回答・結果ページ共通（i18n、embed、読込/エラー表示）
+├── ydi-page.css        # ページ共通の body と、回答・結果ページの外枠
 ├── safe-dom.js
 ├── d3.sketchy.js
 ├── data/               # ヘッダーカタログ用 CSV
 └── supabase/           # クイズ公開・OGP の Edge Functions と migration
 ```
 
-描画コアは 3 ページで共有する。ページ固有なのはフォーム、i18n、Supabase 入出力だけ。
+描画コアは 3 ページで共有する。ページ固有なのはフォーム、文言、Supabase 入出力だけ。道具箱でクイズを出題できるのはこのツールだけなので、共有モジュールはツール内に置き、チャートシェアの標準（`*_shares`）には寄せない。
 
 クイズ公開のテーブル・RLS・Edge Function は [SUPABASE_QUIZ_GUIDE.md](SUPABASE_QUIZ_GUIDE.md) を正とする。プロジェクト横断の正本は `_app_core/_documents/機能_共有/SUPABASE_QUIZ_GUIDE.md`。
 
