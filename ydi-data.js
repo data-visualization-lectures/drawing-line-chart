@@ -1,5 +1,27 @@
 // CSV / series helpers for the editor. No DOM access.
 
+import { formatYearMonth } from "./ydi-chart.js";
+
+const DATE_PARSER_URL = "https://id.data-viz-lectures.com/lib/dvz-date-parser.v1.mjs";
+let dateParser = null;
+
+// 共通日付パーサー（「2003年」「2003年4月」「令和6年」など）。読めなければ従来の判定だけで動く
+export async function loadDateParser() {
+  if (dateParser) return;
+  try {
+    const { createDVZDateParser } = await import(DATE_PARSER_URL);
+    dateParser = createDVZDateParser(window.d3);
+  } catch (error) {
+    console.warn("dvz-date-parser unavailable; using built-in date rules:", error);
+  }
+}
+
+function parseDate(raw) {
+  if (!dateParser) return null;
+  const { date, precision } = dateParser.parseDetailed(String(raw).trim());
+  return date ? { date, precision } : null;
+}
+
 const sampleRows = (rows) => rows.slice(0, Math.min(10, rows.length));
 
 const parseNumber = (raw) => parseFloat(String(raw).replace(/,/g, ""));
@@ -9,7 +31,7 @@ export function isTimeSeriesCol(rows, col) {
   const sample = sampleRows(rows);
   return sample.filter(r => {
     const v = String(r[col]).trim();
-    return /^\d{4}$/.test(v) || /^\d{6}$/.test(v) || /\d{4}[-\/]/.test(v);
+    return /^\d{4}$/.test(v) || /^\d{6}$/.test(v) || /\d{4}[-\/]/.test(v) || !!parseDate(v);
   }).length > sample.length * 0.5;
 }
 
@@ -24,7 +46,9 @@ export function detectXFormat(rows, col) {
   const sample = sampleRows(rows);
   const hasMonthly = sample.filter(r => {
     const v = String(r[col]).trim();
-    return /^\d{6}$/.test(v) || /^\d{4}[\/\-]\d{1,2}$/.test(v) || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(v);
+    if (/^\d{6}$/.test(v) || /^\d{4}[\/\-]\d{1,2}$/.test(v) || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(v)) return true;
+    const parsed = parseDate(v);
+    return !!parsed && parsed.precision !== "year";
   }).length > sample.length * 0.5;
   return hasMonthly ? "yyyymm" : "year";
 }
@@ -32,6 +56,11 @@ export function detectXFormat(rows, col) {
 // YYYYMM → 小数年に変換（例: 201003 → 2010.167）
 export function parseTimeValue(raw) {
   const s = String(raw).trim();
+  const parsed = parseDate(s);
+  if (parsed) {
+    const y = parsed.date.getFullYear();
+    return parsed.precision === "year" ? y : y + parsed.date.getMonth() / 12;
+  }
   if (/^\d{6}$/.test(s)) {
     return parseInt(s.slice(0, 4)) + (parseInt(s.slice(4, 6)) - 1) / 12;
   }
@@ -46,13 +75,6 @@ export function parseTimeValue(raw) {
     if (dateMatch) x = parseInt(dateMatch[1]);
   }
   return x;
-}
-
-// 小数年 → "YYYY/MM"
-export function formatYearMonth(val) {
-  const y = Math.floor(val);
-  const m = Math.round((val - y) * 12) + 1;
-  return y + "/" + String(m).padStart(2, "0");
 }
 
 export function formatXValue(val, xFormat) {

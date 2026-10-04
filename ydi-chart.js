@@ -1,5 +1,3 @@
-import { formatYearMonth } from "./ydi-data.js";
-
 export const DEFAULTS = {
   unit: "",
   yFormat: ",.0f",
@@ -86,6 +84,13 @@ function mergeConfig(cfg) {
     margin: { ...DEFAULTS.margin, ...(cfg.margin || {}) },
     colors: { ...DEFAULTS.colors, ...(cfg.colors || {}) },
   };
+}
+
+// 小数年 → "YYYY/MM"
+export function formatYearMonth(val) {
+  const y = Math.floor(val);
+  const m = Math.round((val - y) * 12) + 1;
+  return y + "/" + String(m).padStart(2, "0");
 }
 
 function formatXTick(d, startX, xFormat) {

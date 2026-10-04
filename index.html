@@ -432,7 +432,8 @@ import {
   SUPABASE_URL, TOOL_NAME_JA, createQuizClient, quizPageUrl, quizOgPath, uploadOgPng,
 } from "./ydi-config.js";
 import {
-  isTimeSeriesCol, isNumericCol, detectXFormat, formatXValue, rowsToSeries, validateSeries, annotationOptions,
+  loadDateParser, isTimeSeriesCol, isNumericCol, detectXFormat, formatXValue, rowsToSeries, validateSeries,
+  annotationOptions,
 } from "./ydi-data.js";
 
 // ============================================================
@@ -444,6 +445,7 @@ const NO_DATA_MESSAGE = "データをアップロードして設定を完了し�
 
 const { appendSanitizedHtml, createSingleColumnTable, populateSelect } = window.dvzDom;
 const quizSupabase = createQuizClient();
+const dateParserReady = loadDateParser();
 
 // --------------- 状態 ---------------
 let uploadedData = null;     // [{x, y}, ...]
@@ -790,9 +792,10 @@ function loadCsvColumns(xCol, yCol) {
   onDataLoaded();
 }
 
-function loadDataText(text, fileName) {
+async function loadDataText(text, fileName) {
   dataSource.replaceChildren();
   showProcessingToast("ファイルを読み込み中です");
+  await dateParserReady;
   try {
     if (fileName.endsWith(".json")) {
       const rows = JSON.parse(text);
